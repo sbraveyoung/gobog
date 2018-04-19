@@ -4,8 +4,8 @@ import (
 	"flag"
 	"net/http"
 	"strconv"
-	"strings"
 
+	"github.com/SmartBrave/gobog/pkg/id"
 	"github.com/facebookgo/grace/gracehttp"
 )
 
@@ -46,11 +46,11 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func postsHandler(w http.ResponseWriter, r *http.Request) {
-	url := r.URL.Path
-	articleId := strings.TrimPrefix(url, "/posts/")
-	id := strconv.Atoi(articleId)
-	w.Write([]byte(articleId))
-	//w.Write([]byte(strconv.FormatInt(id.Generate(), 10) + "\n"))
+	//url := r.URL.Path
+	//articleId := strings.TrimPrefix(url, "/posts/")
+	//id := strconv.Atoi(articleId)
+	//w.Write([]byte(articleId))
+	w.Write([]byte(strconv.FormatInt(id.Generate(), 10) + "\n"))
 }
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("This is about page!"))

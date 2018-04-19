@@ -1,12 +1,17 @@
 package config
 
 import (
-	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
+	"github.com/SmartBrave/gobog/cmd"
 	"github.com/spf13/viper"
+)
+
+const (
+	CFG = "./conf/cfg.toml"
 )
 
 type MysqlConfig struct {
@@ -24,8 +29,7 @@ type HttpConfig struct {
 }
 
 type Config struct {
-	ConfigFile string
-	BlogPath   string        `mapstructure:"blogPath"`
+	ConfigFile string        `mapstructure:"configFile"`
 	Mysql      MysqlConfig   `mapstructure:"mysql"`
 	Log        LogConfig     `mapstructure:"log"`
 	Article    ArticleConfig `mapstructure:"article"`
@@ -34,18 +38,39 @@ type Config struct {
 }
 
 func (c *Config) parseFlag() {
-	flag.StringVar(&c.ConfigFile, "c", "./conf/cfg.toml", "config file")
-	help := flag.Bool("h", false, "help")
-
-	flag.Parse()
-	if *help {
-		showHelp()
-		os.Exit(0)
-	}
-
+	c.ConfigFile = CFG
 	if _, err := os.Stat(c.ConfigFile); err != nil {
 		fmt.Printf("check config file: %s happend error: %v\n", c.ConfigFile, err)
 		os.Exit(1)
+	}
+
+	for index, arg := range os.Args {
+		arg = strings.TrimPrefix(arg, "-")
+		switch arg {
+		case "h", "help":
+			showHelp()
+			os.Exit(0)
+		case "init":
+			var path string
+			if index+1 < len(os.Args) {
+				path = os.Args[index+1]
+			} else {
+				var err error
+				if path, err = os.Getwd(); err != nil {
+					fmt.Printf("get current dir fail. err: %v\n", err)
+					os.Exit(1)
+				}
+			}
+			if err := cmd.InitWorkSpace(path); err != nil {
+				fmt.Printf("init dir %s fail. err: %v\n", path, err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		case "version":
+			showVersion()
+			os.Exit(0)
+		default:
+		}
 	}
 }
 
@@ -76,6 +101,17 @@ func New() (c *Config, err error) {
 }
 
 func showHelp() {
-	fmt.Println("Usage:")
-	fmt.Println("	//TODO")
+	helpInfo := `Usage: %s <command>
+	
+Commands:
+	help            Get help on a command.
+	version         Show version information.
+	init [path]     Create a new blog folder.It default current folder if no path option.
+`
+
+	fmt.Printf(helpInfo, strings.TrimPrefix(os.Args[0], "./"))
+}
+
+func showVersion() {
+	fmt.Println("version 1.0")
 }
