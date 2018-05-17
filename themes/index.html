@@ -25,9 +25,6 @@
                 document.body.classList.add('mobile');
             }
         </script>
-     <!--
-        <p>{{ .Article }}</p>
-     -->
         <nav class="navbar navbar-default navbar-fixed-top" style="opacity: .9" role="navigation">
             <div class="container-fluid">
                 <!-- Brand and toggle get grouped for better mobile display -->
@@ -52,12 +49,11 @@
         <div class="outer">
             <ul class="list-group">
                 
+                {{ range $k,$v := . }}
                 <li class="list-group-item title">
-                    <a href="/blog-cn/2018/04/13/csbook-chapter1">解谜计算机科学</a>
+                    <a href="{{ $v.Url }}">{{ $v.Title }}</a>
                 </li>
-                <li class="list-group-item title">
-                    <a href="/blog-cn/2018/03/27/door-etiquette">扶门的礼仪</a>
-                </li>
+                {{ end }}
 
             </ul>
         </div>
