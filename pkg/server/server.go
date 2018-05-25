@@ -73,6 +73,7 @@ func Init() {
 				if subArticle.tag == DIR {
 					continue
 				}
+				subArticle.Url = "/posts/" + article.Id + "/" + subArticle.Id
 				article.SubArticle = append(article.SubArticle, subArticle)
 			}
 			sort.Sort(article.SubArticle)
@@ -117,27 +118,48 @@ func imagesHandler(w http.ResponseWriter, r *http.Request) {
 		//log
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
+		//FIXME
+		//TODO
+		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 	name := args[0]
-	http.ServeFile(w, r, c.Blog.ImagePath+"/"+name) //BUG:should support multiDir
+	http.ServeFile(w, r, c.Blog.ImagePath+"/"+name) //TODO:should support multiDir
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(r)
+	if strings.HasSuffix(url, ".css") {
+		paths := strings.Split(url, "/")
+		fileName := paths[len(paths)-1]
+		fmt.Println(url)
+		fmt.Println(paths)
+		fmt.Println(fileName)
+		http.ServeFile(w, r, c.Blog.Theme+"/"+fileName)
+		return
+	}
 	t, _ := template.ParseFiles(c.Blog.Theme + "/index.html")
 	var err error
-	if strings.HasPrefix(url, "/zhuanlan/") {
-		title := strings.TrimPrefix(url, "/zhuanlan/")
-		for _, article := range articles {
-			if article.Title == title && article.tag == DIR {
-				err = t.Execute(w, article.SubArticle)
-			}
+	id := strings.TrimPrefix(url, "/")
+	for _, article := range articles {
+		if !article.IsSame(id) {
+			continue
 		}
-	} else {
-		err = t.Execute(w, articles)
+		if article.tag == DIR {
+			err = t.Execute(w, article.SubArticle)
+			if err != nil {
+				//log
+				fmt.Println("t.Execute occur some err: ", err)
+				//w.WriteHeader(http.StatusInternalServerError)
+			}
+		} else {
+			//rewrite to postsHandler
+		}
+		break
 	}
+	err = t.Execute(w, articles)
 	if err != nil {
 		//log
 		fmt.Println("t.Execute occur some err: ", err)
@@ -179,6 +201,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func postsHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	isZhuanlan := false
 	path := strings.TrimPrefix(url, "/posts/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -187,48 +210,67 @@ func postsHandler(w http.ResponseWriter, r *http.Request) {
 		//BUG: has no effect
 		w.WriteHeader(http.StatusNotFound)
 		return
+	} else if len(args) >= 2 {
+		isZhuanlan = true
 	}
 	id := args[0]
+	var subId string
+	if isZhuanlan {
+		subId = args[1]
+	}
 	//var md markdown.Markdown
+	var a *Article
 	for _, article := range articles {
 		if article.IsSame(id) {
-			//md.OriginialText = article.Content
-			//tmp, err := md.Parse()
-
-			tmp := blackfriday.MarkdownBasic(article.Content)
-
-			//md := markdown.New(markdown.XHTMLOutput(true), markdown.Nofollow(true))
-			//article.Parse = md.RenderToString(article.Content)
-
-			//if err != nil {
-			//	//log
-			//	fmt.Println("md.Parse occur some err: ", err)
-			//	w.WriteHeader(http.StatusInternalServerError)
-			//	return
-			//}
-			article.Parse = string(tmp)
-			t, err := ttemplate.ParseFiles(c.Blog.Theme + "/posts.html")
-			if err != nil {
-				//log
-				fmt.Println("t.ParseFiles occur some err: ", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
+			if isZhuanlan {
+				for _, subArticle := range article.SubArticle {
+					if subArticle.IsSame(subId) {
+						if subArticle.Parse != "" {
+							//todo
+						}
+						a = subArticle
+						break
+					}
+				}
+				continue
 			}
-			/*
-				t = t.Funcs(ttemplate.FuncMap{
-					"ConvertRunetoString": func(r []rune) string {
-						return string(r)
-					}})
-			*/
-			err = t.Execute(w, article)
-			if err != nil {
-				//log
-				fmt.Println("t.Execute occur some err: ", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			break
+			a = article
 		}
+	}
+	//md.OriginialText = article.Content
+	//tmp, err := md.Parse()
+
+	tmp := blackfriday.MarkdownBasic(a.Content)
+
+	//md := markdown.New(markdown.XHTMLOutput(true), markdown.Nofollow(true))
+	//article.Parse = md.RenderToString(article.Content)
+
+	//if err != nil {
+	//	//log
+	//	fmt.Println("md.Parse occur some err: ", err)
+	//	w.WriteHeader(http.StatusInternalServerError)
+	//	return
+	//}
+	a.Parse = string(tmp)
+	t, err := ttemplate.ParseFiles(c.Blog.Theme + "/posts.html")
+	if err != nil {
+		//log
+		fmt.Println("t.ParseFiles occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	/*
+		t = t.Funcs(ttemplate.FuncMap{
+			"ConvertRunetoString": func(r []rune) string {
+				return string(r)
+			}})
+	*/
+	err = t.Execute(w, a)
+	if err != nil {
+		//log
+		fmt.Println("t.Execute occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -260,7 +302,14 @@ func newArticle(filePath string) (*Article, error) {
 	if fileInfo.IsDir() {
 		article.tag = DIR
 		article.Title = fileInfo.Name()
-		article.Url = "/zhuanlan/" + article.Title
+
+		ieee := crc32.NewIEEE()
+		ieee.Write([]byte(article.Title))
+		s := strconv.FormatUint(uint64(ieee.Sum32()), 16)
+		article.Id = s
+
+		article.Url = article.Id
+
 		return &article, nil
 	}
 
