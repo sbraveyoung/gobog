@@ -15,6 +15,9 @@ const (
 )
 
 type MysqlConfig struct {
+	User   string
+	Passwd string
+	Db     string
 }
 
 type LogConfig struct {
@@ -28,13 +31,29 @@ type HttpConfig struct {
 	Addr string `mapstructure:"addr"`
 }
 
+type BlogConfig struct {
+	Title       string `mapstructure:"title"`
+	Subtitle    string `mapstructure:"subtitle"`
+	Description string `mapstructure:"description"`
+	Author      string `mapstructure:"author"`
+	Theme       string `mapstructure:"theme"`
+	Domain      string `mapstructure:"domain"`
+	PostPath    string `mapstructure:"postpath"`
+	ImagePath   string `mapstructure:"imagepath"`
+	CssPath     string `mapstructure:"csspath"`
+	VideoPath   string `mapstructure:"videopath"`
+	AudioPath   string `mapstructure:"audiopath"`
+}
+
 type Config struct {
-	ConfigFile string        `mapstructure:"configFile"`
-	Mysql      MysqlConfig   `mapstructure:"mysql"`
-	Log        LogConfig     `mapstructure:"log"`
-	Article    ArticleConfig `mapstructure:"article"`
-	Http       HttpConfig    `mapsturcture:"http"`
-	once       sync.Once
+	ConfigFile string     `mapstructure:"configFile"`
+	Blog       BlogConfig `mapstructure:"blog"`
+
+	Http    HttpConfig    `mapsturcture:"http"`
+	Article ArticleConfig `mapstructure:"article"`
+	Log     LogConfig     `mapstructure:"log"`
+	Mysql   MysqlConfig   `mapstructure:"mysql"`
+	once    sync.Once
 }
 
 func (c *Config) parseFlag() {

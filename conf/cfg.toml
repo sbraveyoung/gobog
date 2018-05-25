@@ -4,3 +4,21 @@ formatStr="%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%
 
 [http]
 addr="10000"
+
+[blog]
+title="smart的个人博客"
+subtitle="代码分享专栏"
+description="阅读·实践·分享"
+author="smart"
+domain="https://www.sbrave.cn"
+theme="themes"
+postpath="./_source/post"
+imagepath="./_source/image"
+csspath="./_source/css"
+videopath="./_source/video"
+audiopath="./_source/audio"
+
+[mysql]
+user="root"
+passwd=""
+db="blog"
