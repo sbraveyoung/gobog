@@ -103,6 +103,9 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/login", loginHandler)
 	mux.HandleFunc("/posts/", postsHandler)
 	mux.HandleFunc("/image/", imagesHandler)
+	mux.HandleFunc("/css/", cssHandler)
+	mux.HandleFunc("/video/", videoHandler)
+	mux.HandleFunc("/audio/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
 	mux.HandleFunc("/404", notFoundHandler)
 	//mux.HandleFunc("/test", testHandler)
@@ -110,6 +113,57 @@ func newHandler() http.Handler {
 	return mux
 }
 
+func videoHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	path := strings.TrimPrefix(url, "/video/")
+	args := strings.Split(path, "/")
+	if len(args) < 1 {
+		//log
+		//w.WriteHeader(http.StatusBadRequest)
+		//BUG: has no effect
+		//FIXME
+		//TODO
+		//XXX
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	name := args[0]
+	http.ServeFile(w, r, c.Blog.VideoPath+"/"+name) //TODO:should support multiDir
+}
+func audioHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	path := strings.TrimPrefix(url, "/audio/")
+	args := strings.Split(path, "/")
+	if len(args) < 1 {
+		//log
+		//w.WriteHeader(http.StatusBadRequest)
+		//BUG: has no effect
+		//FIXME
+		//TODO
+		//XXX
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	name := args[0]
+	http.ServeFile(w, r, c.Blog.AudioPath+"/"+name) //TODO:should support multiDir
+}
+func cssHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	path := strings.TrimPrefix(url, "/css/")
+	args := strings.Split(path, "/")
+	if len(args) < 1 {
+		//log
+		//w.WriteHeader(http.StatusBadRequest)
+		//BUG: has no effect
+		//FIXME
+		//TODO
+		//XXX
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	name := args[0]
+	http.ServeFile(w, r, c.Blog.CssPath+"/"+name) //TODO:should support multiDir
+}
 func imagesHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
 	path := strings.TrimPrefix(url, "/image/")
@@ -130,36 +184,11 @@ func imagesHandler(w http.ResponseWriter, r *http.Request) {
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
-	fmt.Println(r)
-	if strings.HasSuffix(url, ".css") {
-		paths := strings.Split(url, "/")
-		fileName := paths[len(paths)-1]
-		fmt.Println(url)
-		fmt.Println(paths)
-		fmt.Println(fileName)
-		http.ServeFile(w, r, c.Blog.Theme+"/"+fileName)
-		return
+	if strings.Compare(url, "/") != 0 {
+		//log
 	}
 	t, _ := template.ParseFiles(c.Blog.Theme + "/index.html")
-	var err error
-	id := strings.TrimPrefix(url, "/")
-	for _, article := range articles {
-		if !article.IsSame(id) {
-			continue
-		}
-		if article.tag == DIR {
-			err = t.Execute(w, article.SubArticle)
-			if err != nil {
-				//log
-				fmt.Println("t.Execute occur some err: ", err)
-				//w.WriteHeader(http.StatusInternalServerError)
-			}
-		} else {
-			//rewrite to postsHandler
-		}
-		break
-	}
-	err = t.Execute(w, articles)
+	err := t.Execute(w, articles)
 	if err != nil {
 		//log
 		fmt.Println("t.Execute occur some err: ", err)
@@ -201,76 +230,76 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func postsHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
-	isZhuanlan := false
-	path := strings.TrimPrefix(url, "/posts/")
-	args := strings.Split(path, "/")
-	if len(args) < 1 {
+	url = strings.TrimLeft(url, "/")
+	paths := strings.Split(url, "/")
+	if strings.Compare(paths[0], "posts") == 0 {
+		paths = paths[1:]
+		if len(paths) < 1 {
+			//log
+			return
+		}
+	} else {
 		//log
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		w.WriteHeader(http.StatusNotFound)
 		return
-	} else if len(args) >= 2 {
-		isZhuanlan = true
 	}
-	id := args[0]
-	var subId string
-	if isZhuanlan {
-		subId = args[1]
-	}
-	//var md markdown.Markdown
-	var a *Article
-	for _, article := range articles {
-		if article.IsSame(id) {
-			if isZhuanlan {
-				for _, subArticle := range article.SubArticle {
-					if subArticle.IsSame(subId) {
-						if subArticle.Parse != "" {
-							//todo
-						}
-						a = subArticle
-						break
+	var a []*Article
+	pa := articles
+	for len(paths) != 0 {
+		for _, article := range pa {
+			if article.IsSame(paths[0]) {
+				if len(paths) == 1 {
+					if len(article.SubArticle) > 0 {
+						a = append(a, article.SubArticle...)
+					} else {
+						a = append(a, article)
 					}
+				} else {
+					pa = article.SubArticle
 				}
-				continue
+				paths = paths[1:]
+				break
 			}
-			a = article
 		}
 	}
-	//md.OriginialText = article.Content
-	//tmp, err := md.Parse()
-
-	tmp := blackfriday.MarkdownBasic(a.Content)
-
-	//md := markdown.New(markdown.XHTMLOutput(true), markdown.Nofollow(true))
-	//article.Parse = md.RenderToString(article.Content)
-
-	//if err != nil {
-	//	//log
-	//	fmt.Println("md.Parse occur some err: ", err)
-	//	w.WriteHeader(http.StatusInternalServerError)
-	//	return
-	//}
-	a.Parse = string(tmp)
-	t, err := ttemplate.ParseFiles(c.Blog.Theme + "/posts.html")
-	if err != nil {
+	if len(a) == 0 {
 		//log
-		fmt.Println("t.ParseFiles occur some err: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusNotFound)
 		return
-	}
-	/*
-		t = t.Funcs(ttemplate.FuncMap{
-			"ConvertRunetoString": func(r []rune) string {
-				return string(r)
-			}})
-	*/
-	err = t.Execute(w, a)
-	if err != nil {
-		//log
-		fmt.Println("t.Execute occur some err: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	} else if len(a) == 1 {
+		tmp := blackfriday.MarkdownBasic(a[0].Content)
+		a[0].Parse = string(tmp) //TODO: should Parse article only access it first .
+		t, err := ttemplate.ParseFiles(c.Blog.Theme + "/posts.html")
+		if err != nil {
+			//log
+			fmt.Println("t.ParseFiles occur some err: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		err = t.Execute(w, a[0])
+		if err != nil {
+			//log
+			fmt.Println("t.Execute occur some err: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		t, err := ttemplate.ParseFiles(c.Blog.Theme + "/index.html")
+		if err != nil {
+			//log
+			fmt.Println("t.ParseFiles occur some err: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		err = t.Execute(w, a)
+		if err != nil {
+			//log
+			fmt.Println("t.Execute occur some err: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
@@ -308,7 +337,7 @@ func newArticle(filePath string) (*Article, error) {
 		s := strconv.FormatUint(uint64(ieee.Sum32()), 16)
 		article.Id = s
 
-		article.Url = article.Id
+		article.Url = "/posts/" + article.Id
 
 		return &article, nil
 	}
