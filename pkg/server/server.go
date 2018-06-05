@@ -27,8 +27,7 @@ import (
 )
 
 var (
-	c        *config.Config
-	articles Articles
+	c *config.Config
 )
 
 func Init() {
@@ -44,14 +43,17 @@ func Init() {
 	}
 	for _, article_file := range article_files {
 		name := article_file.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
 		path := c.Blog.PostPath + "/" + name
-		article, err := newArticle(path)
+		article, err := newArticle(path, "")
 		if err != nil {
 			//log
 			continue
 		}
 
-		if article.tag == DIR {
+		if article.Tag == config.DIR {
 			//maybe dir is a zhuanlan
 			subFile, err := os.Open(path)
 			if err != nil {
@@ -66,30 +68,23 @@ func Init() {
 			for _, sub_article_file := range sub_article_files {
 				subName := sub_article_file.Name()
 				subPath := path + "/" + subName
-				subArticle, err := newArticle(subPath)
+				subArticle, err := newArticle(subPath, article.Id)
 				if err != nil {
 					continue
 				}
-				if subArticle.tag == DIR {
+				if subArticle.Tag == config.DIR {
 					continue
 				}
-				subArticle.Url = "/posts/" + article.Id + "/" + subArticle.Id
+				subArticle.Url = "/post/" + article.Id + "/" + subArticle.Id
 				article.SubArticle = append(article.SubArticle, subArticle)
 			}
 			sort.Sort(article.SubArticle)
 		}
-		articles = append(articles, article)
+		c.Blog.Articles = append(c.Blog.Articles, article)
 	}
-	sort.Sort(articles)
+	sort.Sort(c.Blog.Articles)
 }
 
-//blog path design:
-//  /
-//	/login
-//	/posts/SHA1(article)
-//  /image
-//	/about
-//	/404
 func New(conf *config.Config) {
 	c = conf
 	Init()
@@ -101,14 +96,16 @@ func newHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", rootHandler)
 	mux.HandleFunc("/login", loginHandler)
-	mux.HandleFunc("/posts/", postsHandler)
-	mux.HandleFunc("/image/", imagesHandler)
+	mux.HandleFunc("/post/", postHandler)
+	mux.HandleFunc("/image/", imageHandler)
 	mux.HandleFunc("/css/", cssHandler)
+	mux.HandleFunc("/js/", jsHandler)
 	mux.HandleFunc("/video/", videoHandler)
 	mux.HandleFunc("/audio/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
 	mux.HandleFunc("/404", notFoundHandler)
 	//mux.HandleFunc("/test", testHandler)
+	//mux.HandleFunc("/debug", debugHandler)
 
 	return mux
 }
@@ -147,6 +144,23 @@ func audioHandler(w http.ResponseWriter, r *http.Request) {
 	name := args[0]
 	http.ServeFile(w, r, c.Blog.AudioPath+"/"+name) //TODO:should support multiDir
 }
+func jsHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	path := strings.TrimPrefix(url, "/js/")
+	args := strings.Split(path, "/")
+	if len(args) < 1 {
+		//log
+		//w.WriteHeader(http.StatusBadRequest)
+		//BUG: has no effect
+		//FIXME
+		//TODO
+		//XXX
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	name := args[0]
+	http.ServeFile(w, r, c.Blog.JsPath+"/"+name) //TODO:should support multiDir
+}
 func cssHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
 	path := strings.TrimPrefix(url, "/css/")
@@ -164,7 +178,7 @@ func cssHandler(w http.ResponseWriter, r *http.Request) {
 	name := args[0]
 	http.ServeFile(w, r, c.Blog.CssPath+"/"+name) //TODO:should support multiDir
 }
-func imagesHandler(w http.ResponseWriter, r *http.Request) {
+func imageHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
 	path := strings.TrimPrefix(url, "/image/")
 	args := strings.Split(path, "/")
@@ -187,8 +201,8 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.Compare(url, "/") != 0 {
 		//log
 	}
-	t, _ := template.ParseFiles(c.Blog.Theme + "/index.html")
-	err := t.Execute(w, articles)
+	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
+	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-1])
 	if err != nil {
 		//log
 		fmt.Println("t.Execute occur some err: ", err)
@@ -203,7 +217,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		//show login or register page
-		t, _ := template.ParseFiles(c.Blog.Theme + "/login.html")
+		t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/login.html")
 		login := Login{Title: c.Blog.Title, Info: ""}
 		t.Execute(w, login)
 	case "POST":
@@ -216,7 +230,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			user := r.FormValue("user")
 			passwd := r.FormValue("password")
 			if err := dao.VerifyLogin(user, passwd); err != nil {
-				t, _ := template.ParseFiles(c.Blog.Theme + "/login.html")
+				t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/login.html")
 				login := Login{Title: c.Blog.Title, Info: err.Error()}
 				t.Execute(w, login)
 			} else {
@@ -228,11 +242,11 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func postsHandler(w http.ResponseWriter, r *http.Request) {
+func postHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
 	url = strings.TrimLeft(url, "/")
 	paths := strings.Split(url, "/")
-	if strings.Compare(paths[0], "posts") == 0 {
+	if strings.Compare(paths[0], "post") == 0 {
 		paths = paths[1:]
 		if len(paths) < 1 {
 			//log
@@ -245,8 +259,8 @@ func postsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	var a []*Article
-	pa := articles
+	var a config.ArticlesType
+	pa := c.Blog.Articles[:len(c.Blog.Articles)-1]
 	for len(paths) != 0 {
 		for _, article := range pa {
 			if article.IsSame(paths[0]) {
@@ -269,9 +283,11 @@ func postsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	} else if len(a) == 1 {
-		tmp := blackfriday.MarkdownBasic(a[0].Content)
+		//tmp := blackfriday.MarkdownBasic(append([]byte("## "+a[0].Title+"\n"), a[0].Content...))
+		tmp := blackfriday.Markdown(append([]byte("## "+a[0].Title+"\n"), a[0].Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
+
 		a[0].Parse = string(tmp) //TODO: should Parse article only access it first .
-		t, err := ttemplate.ParseFiles(c.Blog.Theme + "/posts.html")
+		t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/post.html")
 		if err != nil {
 			//log
 			fmt.Println("t.ParseFiles occur some err: ", err)
@@ -286,7 +302,7 @@ func postsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		t, err := ttemplate.ParseFiles(c.Blog.Theme + "/index.html")
+		t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
 		if err != nil {
 			//log
 			fmt.Println("t.ParseFiles occur some err: ", err)
@@ -304,17 +320,35 @@ func postsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
+	a := c.Blog.Articles[len(c.Blog.Articles)-1]
+	tmp := blackfriday.Markdown(append([]byte("## "+a.Title+"\n"), a.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
+
+	a.Parse = string(tmp) //TODO: should Parse article only access it first .
+	t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/post.html")
+	if err != nil {
+		//log
+		fmt.Println("t.ParseFiles occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	err = t.Execute(w, a)
+	if err != nil {
+		//log
+		fmt.Println("t.Execute occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 //filepath should is a absPath
-func newArticle(filePath string) (*Article, error) {
-	article := Article{
+func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
+	article := config.ArticleType{
 		FilePath: filePath,
 		Author:   c.Blog.Author,
-		tag:      FILE,
+		Tag:      config.FILE,
 	}
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -329,7 +363,7 @@ func newArticle(filePath string) (*Article, error) {
 	}
 
 	if fileInfo.IsDir() {
-		article.tag = DIR
+		article.Tag = config.DIR
 		article.Title = fileInfo.Name()
 
 		ieee := crc32.NewIEEE()
@@ -337,7 +371,7 @@ func newArticle(filePath string) (*Article, error) {
 		s := strconv.FormatUint(uint64(ieee.Sum32()), 16)
 		article.Id = s
 
-		article.Url = "/posts/" + article.Id
+		article.Url = "/post/" + article.Id
 
 		return &article, nil
 	}
@@ -402,6 +436,7 @@ out:
 	writeString := []byte{}
 	if strings.Compare(article.Title, "") == 0 {
 		article.Title = fileInfo.Name()
+		article.Title = strings.TrimRight(article.Title, ".md")
 	}
 	if strings.Compare(article.Id, "") == 0 {
 		ieee := crc32.NewIEEE()
@@ -410,7 +445,12 @@ out:
 		article.Id = s
 	}
 	if strings.Compare(article.Url, "") == 0 {
-		article.Url = "/posts/" + article.Id
+		//FIXME:the url is error when its in a directory
+		if strings.Compare(fatherId, "") == 0 {
+			article.Url = "/post/" + article.Id
+		} else {
+			article.Url = "/post/" + fatherId + "/" + article.Id
+		}
 	}
 	if strings.Compare(article.Time, "") == 0 {
 		article.Time = time.Now().Format("2006-01-02 15:04:05") //the time of write this article is now default if have no date tag.
