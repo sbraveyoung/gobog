@@ -10,7 +10,7 @@ gobog:clean
 start:gobog
 	nohup ./gobog >debug.log 2>&1 &
 
-restart:stop gobog
+restart:stop gobog #should restart graceful
 	nohup ./gobog >debug.log 2>&1 &
 
 stop:
