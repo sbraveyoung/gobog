@@ -1,31 +1,37 @@
 package log
 
 import (
-	"fmt"
-	"os"
-
-	"github.com/op/go-logging"
+	"io"
+	"log"
 )
 
-func Init(formatStr, logPath string) {
-	var log = logging.MustGetLogger("gobog")
-	var format = logging.MustStringFormatter(formatStr)
-	var file *os.File
+var (
+	Debug func(str string)
+	Info  func(str string)
+	Warn  func(str string)
+	Error func(str string)
 
-	if _, err := os.Stat(logPath); err == os.ErrNotExist {
-		if file, err = os.Create(logPath); err != nil {
-			fmt.Printf("os.Create(%s) fail. err: %v\n", logPath, err)
-			os.Exit(1)
-		}
-	} else if err == nil {
-		if file, err = os.Open(logPath); err != nil {
-			fmt.Printf("os.Open(%s) fail. err: %v\n", logPath, err)
-			os.Exit(1)
-		}
-	} else {
-		fmt.Printf("os.Stat(%s) fail. err: %v\n", logPath, err)
-		os.Exit(1)
+	debug *log.Logger
+	info  *log.Logger
+	warn  *log.Logger
+	erro  *log.Logger
+)
+
+func Init(w io.Writer) {
+	debug = log.New(w, "Debug: ", log.Ldate|log.Ltime|log.Lshortfile)
+	info = log.New(w, "Info: ", log.Ldate|log.Ltime|log.Lshortfile)
+	warn = log.New(w, "Warn: ", log.Ldate|log.Ltime|log.Lshortfile)
+	erro = log.New(w, "Error: ", log.Ldate|log.Ltime|log.Lshortfile)
+	Debug = func(str string) {
+		debug.Output(2, str)
 	}
-	backend := logging.NewLogBackend(f)
-	backendFormatter := logging.NewBackendFormatter(backend, formatStr)
+	Info = func(str string) {
+		info.Output(2, str)
+	}
+	Warn = func(str string) {
+		warn.Output(2, str)
+	}
+	Error = func(str string) {
+		erro.Output(2, str)
+	}
 }

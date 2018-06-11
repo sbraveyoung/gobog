@@ -20,6 +20,8 @@ import (
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
+	log "qiniupkg.com/x/log.v7"
+	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
 	"github.com/facebookgo/grace/gracehttp"
 	"github.com/russross/blackfriday"
@@ -31,9 +33,16 @@ var (
 )
 
 func Init() {
+	//file, err := os.OpenFile(c.Log.Path, os.O_APPEND|os.O_CREATE, 0666)
+	//if err != nil {
+	//	fmt.Println("Open log file fail. path: ", c.Log.Path, " err: ", err)
+	//	os.Exit(1) //should not exit
+	//}
+	//log.Init(file)
+	//log.Info("print some infomation.")
 	file, err := os.Open(c.Blog.PostPath)
 	if err != nil {
-		//log
+		log.Debug("Open blog dir fail: " + c.Blog.PostPath)
 		os.Exit(1)
 	}
 	article_files, err := file.Readdir(0)
@@ -103,7 +112,6 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/video/", videoHandler)
 	mux.HandleFunc("/audio/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
-	mux.HandleFunc("/404", notFoundHandler)
 	//mux.HandleFunc("/test", testHandler)
 	//mux.HandleFunc("/debug", debugHandler)
 
@@ -112,6 +120,7 @@ func newHandler() http.Handler {
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/video/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -129,6 +138,7 @@ func videoHandler(w http.ResponseWriter, r *http.Request) {
 }
 func audioHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/audio/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -146,6 +156,7 @@ func audioHandler(w http.ResponseWriter, r *http.Request) {
 }
 func jsHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/js/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -163,6 +174,7 @@ func jsHandler(w http.ResponseWriter, r *http.Request) {
 }
 func cssHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/css/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -180,6 +192,7 @@ func cssHandler(w http.ResponseWriter, r *http.Request) {
 }
 func imageHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/image/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
@@ -198,6 +211,7 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	if strings.Compare(url, "/") != 0 {
 		//log
 	}
@@ -211,6 +225,8 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	fmt.Println(url)
 	//MUST TODO
 	//salt crypto
 	//HTTPS
@@ -244,6 +260,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
+	fmt.Println(url)
 	url = strings.TrimLeft(url, "/")
 	paths := strings.Split(url, "/")
 	if strings.Compare(paths[0], "post") == 0 {
@@ -320,6 +337,8 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Path
+	fmt.Println(url)
 	a := c.Blog.Articles[len(c.Blog.Articles)-1]
 	tmp := blackfriday.Markdown(append([]byte("## "+a.Title+"\n"), a.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
 
@@ -408,7 +427,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 				article.Content = append(article.Content, []byte(l)...)
 			}
 		}
-		slice := strings.Split(line, ": ")
+		slice := strings.Split(line, ": ") //FIXME: it's require new article must have header
 		if len(slice) != 2 {
 			//log
 			break
