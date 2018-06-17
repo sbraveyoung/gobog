@@ -1,16 +1,16 @@
 
-all:gobog
+all:build
 
-gobog:clean
+build:clean
 	go build
 
 .PHONY:clean
 	go clean
 
-start:gobog
+start:
 	nohup ./gobog >debug.log 2>&1 &
 
-restart:stop gobog #should restart graceful
+restart:stop #should restart graceful
 	nohup ./gobog >debug.log 2>&1 &
 
 stop:
