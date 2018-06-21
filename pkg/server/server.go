@@ -76,6 +76,9 @@ func Init() {
 			}
 			for _, sub_article_file := range sub_article_files {
 				subName := sub_article_file.Name()
+				if strings.HasPrefix(subName, ".") {
+					continue
+				}
 				subPath := path + "/" + subName
 				subArticle, err := newArticle(subPath, article.Id)
 				if err != nil {
@@ -97,8 +100,15 @@ func Init() {
 func New(conf *config.Config) {
 	c = conf
 	Init()
-	addr := *flag.String("addr", ":"+c.Http.Addr, "blog listen on this addr.")
-	gracehttp.Serve(&http.Server{Addr: addr, Handler: newHandler()})
+	servers := []*http.Server{}
+	for index, a := range c.Http.Addr {
+		addr := *flag.String("addr"+strconv.Itoa(index), ":"+a, "blog listen on this addr.")
+		servers = append(servers, &http.Server{Addr: addr, Handler: newHandler()})
+	}
+	if err := gracehttp.Serve(servers...); err != nil {
+		//log
+		panic("gracehttp.Serve occur some error: " + err.Error())
+	}
 }
 
 func newHandler() http.Handler {
@@ -112,10 +122,16 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/video/", videoHandler)
 	mux.HandleFunc("/audio/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
+	mux.HandleFunc("/resume", resumeHandler)
 	//mux.HandleFunc("/test", testHandler)
 	//mux.HandleFunc("/debug", debugHandler)
 
 	return mux
+}
+
+func resumeHandler(w http.ResponseWriter, r *http.Request) {
+	//need passwd,and it's availiable in some time.
+	//
 }
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
@@ -259,6 +275,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
+	//BUG:has error when url is '/post/abc/dev' when '/post/abc' is a article .
 	url := r.URL.Path
 	fmt.Println(url)
 	url = strings.TrimLeft(url, "/")
@@ -301,7 +318,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if len(a) == 1 {
 		//tmp := blackfriday.MarkdownBasic(append([]byte("## "+a[0].Title+"\n"), a[0].Content...))
-		tmp := blackfriday.Markdown(append([]byte("## "+a[0].Title+"\n"), a[0].Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
+		tmp := blackfriday.Markdown(append([]byte("## "+a[0].Title+"\n"), a[0].Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE|blackfriday.EXTENSION_TABLES)
 
 		a[0].Parse = string(tmp) //TODO: should Parse article only access it first .
 		t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/post.html")

@@ -4,7 +4,7 @@ formatStr="%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%
 path="./logs/gobog.log"
 
 [http]
-addr="10000"
+addr=["8080","80","10000"]
 
 [blog]
 title="smart的个人博客"
