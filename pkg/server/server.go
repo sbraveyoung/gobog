@@ -4,6 +4,7 @@ package server
 
 import (
 	"bufio"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"hash/crc32"
@@ -101,9 +102,28 @@ func New(conf *config.Config) {
 	c = conf
 	Init()
 	servers := []*http.Server{}
+	cer, err := tls.LoadX509KeyPair(c.Http.Cert, c.Http.Key)
+	if err != nil {
+		//log
+		fmt.Println("generate cert fail.err: ", err)
+		return
+	}
 	for index, a := range c.Http.Addr {
 		addr := *flag.String("addr"+strconv.Itoa(index), ":"+a, "blog listen on this addr.")
-		servers = append(servers, &http.Server{Addr: addr, Handler: newHandler()})
+		servers = append(servers, &http.Server{
+			Addr:    addr,
+			Handler: newHandler(),
+		})
+	}
+	for index, a := range c.Http.Addrs {
+		addrs := *flag.String("addrs"+strconv.Itoa(index), ":"+a, "blog listen on this addr.")
+		servers = append(servers, &http.Server{
+			Addr:    addrs,
+			Handler: newHandler(),
+			TLSConfig: &tls.Config{
+				Certificates: []tls.Certificate{cer},
+			},
+		})
 	}
 	if err := gracehttp.Serve(servers...); err != nil {
 		//log

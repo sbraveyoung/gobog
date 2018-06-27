@@ -4,7 +4,12 @@ formatStr="%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%
 path="./logs/gobog.log"
 
 [http]
-addr=["8080","80","10000"]
+cert="cert/1_www.sbrave.cn_bundle.crt"
+key="cert/2_www.sbrave.cn.key"
+addr=["8080","10000"]
+addrs=["8081","10001"]
+# addr=["80","8080","10000"]
+# listen 80 address needs root permission
 
 [blog]
 title="smart的个人博客"

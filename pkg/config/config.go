@@ -23,7 +23,10 @@ type LogConfig struct {
 }
 
 type HttpConfig struct {
-	Addr []string `mapstructure:"addr"`
+	Addr  []string `mapstructure:"addr"`
+	Addrs []string `mapstructure:"addrs"`
+	Cert  string   `mapstructure:"cert"`
+	Key   string   `mapstructure:"key"`
 }
 
 type BlogConfig struct {
