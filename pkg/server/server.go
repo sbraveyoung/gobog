@@ -111,8 +111,19 @@ func New(conf *config.Config) {
 	for index, a := range c.Http.Addr {
 		addr := *flag.String("addr"+strconv.Itoa(index), ":"+a, "blog listen on this addr.")
 		servers = append(servers, &http.Server{
-			Addr:    addr,
-			Handler: newHandler(),
+			Addr: addr,
+			//Handler: newHandler(),
+			// FIXME: what's the http.HandlerFunc? why it can accept one arg?
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				host := r.Host
+				ret := strings.IndexByte(host, ':')
+				if ret < 0 {
+					//log
+					ret = len(host)
+				}
+				host = host[:ret] + ":" + c.Http.Addrs[index] //this require that len(c.Http.Addr) must equal to len(c.Http.Addrs)
+				http.Redirect(w, r, fmt.Sprintf("https://%s%s", host, r.URL), http.StatusMovedPermanently)
+			}),
 		})
 	}
 	for index, a := range c.Http.Addrs {
