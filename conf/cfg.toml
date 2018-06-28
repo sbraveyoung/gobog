@@ -6,9 +6,8 @@ path="./logs/gobog.log"
 [http]
 cert="cert/1_www.sbrave.cn_bundle.crt"
 key="cert/2_www.sbrave.cn.key"
-addr=["8080","10000"]
-addrs=["8081","10001"]
-# addr=["80","8080","10000"]
+addr=["80"]
+addrs=["443"]
 # listen 80 address needs root permission
 
 [blog]
