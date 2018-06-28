@@ -261,6 +261,9 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(url)
 	if strings.Compare(url, "/") != 0 {
 		//log
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(url + " is not found."))
+		return
 	}
 	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
 	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-1])
@@ -327,6 +330,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	var a config.ArticlesType
 	pa := c.Blog.Articles[:len(c.Blog.Articles)-1]
 	for len(paths) != 0 {
+	label:
 		for _, article := range pa {
 			if article.IsSame(paths[0]) {
 				if len(paths) == 1 {
@@ -338,10 +342,10 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 				} else {
 					pa = article.SubArticle
 				}
-				paths = paths[1:]
-				break
+				break label
 			}
 		}
+		paths = paths[1:]
 	}
 	if len(a) == 0 {
 		//log
