@@ -112,8 +112,8 @@ func New(conf *config.Config) {
 		addr := *flag.String("addr"+strconv.Itoa(index), ":"+a, "blog listen on this addr.")
 		servers = append(servers, &http.Server{
 			Addr: addr,
-			//Handler: newHandler(),
 			// FIXME: what's the http.HandlerFunc? why it can accept one arg?
+			// Answer: convert anonymous function to type of http.HandlerFunc forced.
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				host := r.Host
 				ret := strings.IndexByte(host, ':')
@@ -121,7 +121,7 @@ func New(conf *config.Config) {
 					//log
 					ret = len(host)
 				}
-				host = host[:ret] + ":" + c.Http.Addrs[index] //this require that len(c.Http.Addr) must equal to len(c.Http.Addrs)
+				host = host[:ret] + ":" + c.Http.Addrs[index] //this require that len(c.Http.Addr) must equal to len(c.Http.Addrs),and every elements should correspond.
 				http.Redirect(w, r, fmt.Sprintf("https://%s%s", host, r.URL), http.StatusMovedPermanently)
 			}),
 		})
@@ -162,7 +162,26 @@ func newHandler() http.Handler {
 
 func resumeHandler(w http.ResponseWriter, r *http.Request) {
 	//need passwd,and it's availiable in some time.
-	//
+	url := r.URL.Path
+	fmt.Println(url)
+	a := c.Blog.Articles[len(c.Blog.Articles)-1]
+	tmp := blackfriday.Markdown(append([]byte("## "+a.Title+"\n"), a.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
+
+	a.Parse = string(tmp) //TODO: should Parse article only access it first .
+	t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/resume.html")
+	if err != nil {
+		//log
+		fmt.Println("t.ParseFiles occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	err = t.Execute(w, a)
+	if err != nil {
+		//log
+		fmt.Println("t.Execute occur some err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
@@ -266,7 +285,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
-	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-1])
+	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-2])
 	if err != nil {
 		//log
 		fmt.Println("t.Execute occur some err: ", err)
@@ -328,7 +347,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var a config.ArticlesType
-	pa := c.Blog.Articles[:len(c.Blog.Articles)-1]
+	pa := c.Blog.Articles[:len(c.Blog.Articles)-2]
 	for len(paths) != 0 {
 	label:
 		for _, article := range pa {
@@ -391,7 +410,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Path
 	fmt.Println(url)
-	a := c.Blog.Articles[len(c.Blog.Articles)-1]
+	a := c.Blog.Articles[len(c.Blog.Articles)-2]
 	tmp := blackfriday.Markdown(append([]byte("## "+a.Title+"\n"), a.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
 
 	a.Parse = string(tmp) //TODO: should Parse article only access it first .
