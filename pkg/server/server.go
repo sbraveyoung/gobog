@@ -104,10 +104,14 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/audio/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
 	mux.HandleFunc("/404", notFoundHandler)
+	mux.HandleFunc("/version", versionHandler)
 	//mux.HandleFunc("/test", testHandler)
 	//mux.HandleFunc("/debug", debugHandler)
 
 	return mux
+}
+
+func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
