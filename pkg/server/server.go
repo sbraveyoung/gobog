@@ -1,6 +1,6 @@
 package server
 
-//channel goroutine应该用一下
+//try to use channel and goroutine
 
 import (
 	"bufio"
@@ -146,12 +146,12 @@ func newHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", rootHandler)
 	mux.HandleFunc("/login", loginHandler)
-	mux.HandleFunc("/post/", postHandler)
-	mux.HandleFunc("/image/", imageHandler)
+	mux.HandleFunc("/posts/", postHandler)
+	mux.HandleFunc("/images/", imageHandler)
 	mux.HandleFunc("/css/", cssHandler)
 	mux.HandleFunc("/js/", jsHandler)
-	mux.HandleFunc("/video/", videoHandler)
-	mux.HandleFunc("/audio/", audioHandler)
+	mux.HandleFunc("/videos/", videoHandler)
+	mux.HandleFunc("/audios/", audioHandler)
 	mux.HandleFunc("/about", aboutHandler)
 	mux.HandleFunc("/resume", resumeHandler)
 	//mux.HandleFunc("/test", testHandler)
@@ -265,7 +265,23 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(url + " is not found."))
 		return
 	}
-	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
+	funcMap := template.FuncMap{"IsBeforeNow": func(t string) bool {
+		objTime, err := time.Parse("2006-01-02 15:04:05", t)
+		if err != nil {
+			//log
+			fmt.Println(err)
+			return true
+		}
+		now := time.Now()
+		if objTime.Before(now) {
+			return true
+		}
+		return false
+	}}
+	t := template.New("root").Funcs(funcMap)
+	//t = template.Must(t.ParseFiles("themes/" + c.Blog.Theme + "/index.html"))
+	//err := t.ExecuteTemplate(w, "root", c.Blog.Articles[:len(c.Blog.Articles)-1])
+	t, _ = t.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
 	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-1])
 	if err != nil {
 		//log
