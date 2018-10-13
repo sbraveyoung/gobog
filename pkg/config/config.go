@@ -18,8 +18,14 @@ const (
 )
 
 type LogConfig struct {
-	FormatStr string `mapstructure:"formatStr"`
-	Path      string `mapstructure:"path"`
+	FormatStr   string `mapstructure:"formatStr"`
+	RunMode     string `mapstructure:"runMode"`
+	LogFileName string `mapstructure:"logFileName"`
+	LogMaxLines int    `mapstructure:"logMaxLines"`
+	LogMaxSize  int    `mapstructure:"logMaxSize"`
+	LogDaily    bool   `mapstructure:"logDaily"`
+	LogRotate   bool   `mapstructure:"logRotate"`
+	LogLevel    int    `mapstructure:"logLevel"`
 }
 
 type HttpConfig struct {

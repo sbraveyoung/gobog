@@ -10,6 +10,7 @@ import (
 	"hash/crc32"
 	"html/template"
 	"io"
+	"logs"
 	"net/http"
 	"os"
 	"sort"
@@ -21,7 +22,6 @@ import (
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
-	log "qiniupkg.com/x/log.v7"
 	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
 	"github.com/facebookgo/grace/gracehttp"
@@ -34,32 +34,29 @@ var (
 )
 
 func Init() {
-	//file, err := os.OpenFile(c.Log.Path, os.O_APPEND|os.O_CREATE, 0666)
-	//if err != nil {
-	//	fmt.Println("Open log file fail. path: ", c.Log.Path, " err: ", err)
-	//	os.Exit(1) //should not exit
-	//}
-	//log.Init(file)
-	//log.Info("print some infomation.")
+
+	logs.Info(c.Blog.PostPath)
+
 	file, err := os.Open(c.Blog.PostPath)
 	if err != nil {
-		log.Debug("Open blog dir fail: " + c.Blog.PostPath)
+		logs.Error(err)
 		os.Exit(1)
 	}
 	article_files, err := file.Readdir(0)
 	if err != nil {
-		//log
+		logs.Error(err)
 		os.Exit(1)
 	}
 	for _, article_file := range article_files {
 		name := article_file.Name()
 		if strings.HasPrefix(name, ".") {
+			logs.Warn(name, " is a hidly file.")
 			continue
 		}
 		path := c.Blog.PostPath + "/" + name
 		article, err := newArticle(path, "")
 		if err != nil {
-			//log
+			logs.Warn(err)
 			continue
 		}
 
@@ -67,17 +64,18 @@ func Init() {
 			//maybe dir is a zhuanlan
 			subFile, err := os.Open(path)
 			if err != nil {
-				//log
+				logs.Warn(err)
 				continue
 			}
 			sub_article_files, err := subFile.Readdir(0)
 			if err != nil {
-				//log
+				logs.Warn(err)
 				continue
 			}
 			for _, sub_article_file := range sub_article_files {
 				subName := sub_article_file.Name()
 				if strings.HasPrefix(subName, ".") {
+					logs.Warn(subName, " is a hidly file.")
 					continue
 				}
 				subPath := path + "/" + subName
@@ -104,7 +102,7 @@ func New(conf *config.Config) {
 	servers := []*http.Server{}
 	cer, err := tls.LoadX509KeyPair(c.Http.Cert, c.Http.Key)
 	if err != nil {
-		//log
+		logs.Error(err)
 		fmt.Println("generate cert fail.err: ", err)
 		return
 	}
@@ -118,7 +116,7 @@ func New(conf *config.Config) {
 				host := r.Host
 				ret := strings.IndexByte(host, ':')
 				if ret < 0 {
-					//log
+					logs.Warn("ret < 0,ret:", ret)
 					ret = len(host)
 				}
 				host = host[:ret] + ":" + c.Http.Addrs[index] //this require that len(c.Http.Addr) must equal to len(c.Http.Addrs)
@@ -137,7 +135,7 @@ func New(conf *config.Config) {
 		})
 	}
 	if err := gracehttp.Serve(servers...); err != nil {
-		//log
+		logs.Error(err)
 		panic("gracehttp.Serve occur some error: " + err.Error())
 	}
 }
@@ -161,22 +159,34 @@ func newHandler() http.Handler {
 }
 
 func resumeHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	//need passwd,and it's availiable in some time.
 	//
 }
 
 func videoHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/video/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
-		//log
+		logs.Error(args)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		//FIXME
-		//TODO
-		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -184,17 +194,22 @@ func videoHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, c.Blog.VideoPath+"/"+name) //TODO:should support multiDir
 }
 func audioHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/audio/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
-		//log
+		logs.Error(args)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		//FIXME
-		//TODO
-		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -202,17 +217,22 @@ func audioHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, c.Blog.AudioPath+"/"+name) //TODO:should support multiDir
 }
 func jsHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/js/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
-		//log
+		logs.Error(args)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		//FIXME
-		//TODO
-		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -220,17 +240,22 @@ func jsHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, c.Blog.JsPath+"/"+name) //TODO:should support multiDir
 }
 func cssHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/css/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
-		//log
+		logs.Error(args)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		//FIXME
-		//TODO
-		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -238,17 +263,22 @@ func cssHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, c.Blog.CssPath+"/"+name) //TODO:should support multiDir
 }
 func imageHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	path := strings.TrimPrefix(url, "/image/")
 	args := strings.Split(path, "/")
 	if len(args) < 1 {
-		//log
+		logs.Error(args)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		//FIXME
-		//TODO
-		//XXX
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -257,40 +287,53 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	if strings.Compare(url, "/") != 0 {
-		//log
+		logs.Error("not root url.")
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(url + " is not found."))
 		return
 	}
-	funcMap := template.FuncMap{"IsBeforeNow": func(t string) bool {
-		objTime, err := time.Parse("2006-01-02 15:04:05", t)
-		if err != nil {
-			//log
-			fmt.Println(err)
-			return true
-		}
-		now := time.Now()
-		if objTime.Before(now) {
-			return true
-		}
-		return false
-	}}
-	t := template.New("root").Funcs(funcMap)
+	//funcMap := template.FuncMap{"IsBeforeNow": func(t string) bool {
+	//	objTime, err := time.Parse("2006-01-02 15:04:05", t)
+	//	if err != nil {
+	//		//log
+	//		fmt.Println(err)
+	//		return true
+	//	}
+	//	now := time.Now()
+	//	if objTime.Before(now) {
+	//		return true
+	//	}
+	//	return false
+	//}}
+	//t := template.New("root").Funcs(funcMap)
 	//t = template.Must(t.ParseFiles("themes/" + c.Blog.Theme + "/index.html"))
 	//err := t.ExecuteTemplate(w, "root", c.Blog.Articles[:len(c.Blog.Articles)-1])
-	t, _ = t.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
+	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
 	err := t.Execute(w, c.Blog.Articles[:len(c.Blog.Articles)-1])
 	if err != nil {
-		//log
-		fmt.Println("t.Execute occur some err: ", err)
+		logs.Error("t.Execute occur some err: ", err)
 		//w.WriteHeader(http.StatusInternalServerError)
 	}
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	//MUST TODO
@@ -325,6 +368,13 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	//BUG:has error when url is '/post/abc/dev' when '/post/abc' is a article .
 	url := r.URL.Path
 	fmt.Println(url)
@@ -333,11 +383,11 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.Compare(paths[0], "post") == 0 {
 		paths = paths[1:]
 		if len(paths) < 1 {
-			//log
+			logs.Warn("len(paths) < 1")
 			return
 		}
 	} else {
-		//log
+		logs.Warn(url)
 		//w.WriteHeader(http.StatusBadRequest)
 		//BUG: has no effect
 		w.WriteHeader(http.StatusNotFound)
@@ -364,7 +414,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		paths = paths[1:]
 	}
 	if len(a) == 0 {
-		//log
+		logs.Warn("not found")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	} else if len(a) == 1 {
@@ -374,30 +424,26 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 		a[0].Parse = string(tmp) //TODO: should Parse article only access it first .
 		t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/post.html")
 		if err != nil {
-			//log
-			fmt.Println("t.ParseFiles occur some err: ", err)
+			logs.Warn("t.ParseFiles occur some err: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		err = t.Execute(w, a[0])
 		if err != nil {
-			//log
-			fmt.Println("t.Execute occur some err: ", err)
+			logs.Warn("t.Execute occur some err: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	} else {
 		t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
 		if err != nil {
-			//log
-			fmt.Println("t.ParseFiles occur some err: ", err)
+			logs.Warn("t.ParseFiles occur some err: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		err = t.Execute(w, a)
 		if err != nil {
-			//log
-			fmt.Println("t.Execute occur some err: ", err)
+			logs.Warn("t.Execute occur some err: ", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -405,6 +451,13 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func aboutHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
 	url := r.URL.Path
 	fmt.Println(url)
 	a := c.Blog.Articles[len(c.Blog.Articles)-1]
@@ -413,15 +466,13 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 	a.Parse = string(tmp) //TODO: should Parse article only access it first .
 	t, err := ttemplate.ParseFiles("themes/" + c.Blog.Theme + "/post.html")
 	if err != nil {
-		//log
-		fmt.Println("t.ParseFiles occur some err: ", err)
+		logs.Warn("t.ParseFiles occur some err: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	err = t.Execute(w, a)
 	if err != nil {
-		//log
-		fmt.Println("t.Execute occur some err: ", err)
+		logs.Warn("t.Execute occur some err: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -439,7 +490,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 	}
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		//log
+		logs.Error(err)
 		return nil, err
 	}
 
@@ -465,7 +516,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 
 	file, err := os.OpenFile(filePath, os.O_RDWR, 0666)
 	if err != nil {
-		//log
+		logs.Error(err)
 		//os.Exit(1) //should not exit
 		return nil, err
 	}
@@ -473,11 +524,11 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 	for {
 		line, err := reader.ReadString('\n')
 		if err == io.EOF {
-			//log error
+			logs.Warn("err == io.EOF,err:", err)
 			break
 		}
 		if err != nil {
-			//log
+			logs.Error(err)
 			return nil, err
 		}
 		article.Content = append(article.Content, []byte(line)...)
@@ -489,7 +540,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 					goto out
 				}
 				if err != nil {
-					//log
+					logs.Error(err)
 					goto out
 				}
 				article.Content = append(article.Content, []byte(l)...)
@@ -497,7 +548,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 		}
 		slice := strings.Split(line, ": ") //FIXME: it's require new article must have header
 		if len(slice) != 2 {
-			//log
+			logs.Warn(slice)
 			break
 		}
 		slice[1] = strings.TrimRight(slice[1], "\n")
@@ -515,7 +566,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 		case "id", "Id", "ID":
 			article.Id = slice[1]
 		default:
-			//log
+			logs.Warn("default")
 			continue
 		}
 	}
@@ -544,7 +595,7 @@ out:
 	}
 	_, err = file.Seek(0, 0)
 	if err != nil {
-		//log
+		logs.Error(err)
 		//goto out
 	}
 	//Future: could not write every time if this article is not publish first.
@@ -557,12 +608,12 @@ out:
 	writeString = append(writeString, article.Content...)
 	_, err = writer.WriteString(string(writeString))
 	if err != nil {
-		//log
+		logs.Error(err)
 		return nil, err
 	}
 	err = writer.Flush()
 	if err != nil {
-		//log
+		logs.Error(err)
 		fmt.Println(err)
 	}
 	return &article, nil

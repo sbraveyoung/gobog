@@ -2,6 +2,7 @@ package dao
 
 import (
 	"errors"
+	"logs"
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/mysql"
@@ -24,7 +25,7 @@ func VerifyLogin(user, passwd string) error {
 	sql := "select id from user where name='" + user + "' and password='" + passwd + "'"
 	row := d.mysql.QueryRow(sql)
 	if err := row.Scan(&id); err != nil {
-		//log
+		logs.Error(err)
 		//should not return err directly,can expost information of mysql
 		//return err
 		return errors.New("user or passwd error.")
