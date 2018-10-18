@@ -1,9 +1,20 @@
 
 [log]
 formatStr="%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}"
+runMode="dev"
+logFileName="./logs/gobog.log"
+logMaxLines=1000000
+logMaxSize=1000000
+logDaily=true
+logRotate=true
+logLevel=8
 
 [http]
-addr="10000"
+cert="cert/1_www.sbrave.cn_bundle.crt"
+key="cert/2_www.sbrave.cn.key"
+addr=["81"]
+addrs=["443"]
+# listen 80 address needs root permission
 
 [blog]
 title="smart的个人博客"

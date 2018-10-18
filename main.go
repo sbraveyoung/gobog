@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"logs"
 	"os"
 
 	"github.com/SmartBrave/gobog/pkg/config"
@@ -20,6 +21,9 @@ func init() {
 		fmt.Printf("config.New() fail. err: %v\n", err)
 		os.Exit(1)
 	}
+
+	logs.LogInit(c.Log.RunMode, c.Log.LogFileName, c.Log.LogMaxLines, c.Log.LogMaxSize, c.Log.LogDaily, c.Log.LogRotate, c.Log.LogLevel)
+	logs.SetLogFuncCall(true)
 
 	if err = dao.Init(c); err != nil {
 		fmt.Printf("dao.Init() fail. err: %v\n", err)

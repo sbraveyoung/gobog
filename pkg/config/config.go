@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SmartBrave/gobog/cmd"
 	"github.com/spf13/viper"
@@ -17,11 +18,21 @@ const (
 )
 
 type LogConfig struct {
-	formatStr string `mapstructure:"formatStr"`
+	FormatStr   string `mapstructure:"formatStr"`
+	RunMode     string `mapstructure:"runMode"`
+	LogFileName string `mapstructure:"logFileName"`
+	LogMaxLines int    `mapstructure:"logMaxLines"`
+	LogMaxSize  int    `mapstructure:"logMaxSize"`
+	LogDaily    bool   `mapstructure:"logDaily"`
+	LogRotate   bool   `mapstructure:"logRotate"`
+	LogLevel    int    `mapstructure:"logLevel"`
 }
 
 type HttpConfig struct {
-	Addr string `mapstructure:"addr"`
+	Addr  []string `mapstructure:"addr"`
+	Addrs []string `mapstructure:"addrs"`
+	Cert  string   `mapstructure:"cert"`
+	Key   string   `mapstructure:"key"`
 }
 
 type BlogConfig struct {
@@ -45,8 +56,8 @@ type Config struct {
 	ConfigFile string     `mapstructure:"configFile"`
 	Blog       BlogConfig `mapstructure:"blog"`
 	Http       HttpConfig `mapsturcture:"http"` //console the time and other args of server
-	//Log  LogConfig `mapstructure:"log"`
-	once sync.Once
+	Log        LogConfig  `mapstructure:"log"`
+	once       sync.Once
 }
 
 type ArticleType struct {
@@ -84,7 +95,16 @@ func (a ArticlesType) Less(i, j int) bool {
 	if a[i].SubArticle != nil && a[j].SubArticle == nil {
 		return true
 	}
-	return a[i].ModifyTime > a[j].ModifyTime
+	//return a[i].ModifyTime > a[j].ModifyTime
+	ti, err := time.Parse("2006-01-02 15:04:05", a[i].Time)
+	if err != nil {
+		return false
+	}
+	tj, err := time.Parse("2006-01-02 15:04:05", a[j].Time)
+	if err != nil {
+		return true
+	}
+	return ti.Unix() > tj.Unix()
 }
 
 func (a ArticlesType) Swap(i, j int) {
