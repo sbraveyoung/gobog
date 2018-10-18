@@ -83,6 +83,12 @@ func (a ArticlesType) Len() int {
 }
 
 func (a ArticlesType) Less(i, j int) bool {
+	if strings.Contains(a[i].Title, "杨智勇") {
+		return false
+	}
+	if strings.Contains(a[j].Title, "杨智勇") {
+		return true
+	}
 	if strings.Contains(strings.ToLower(a[i].Title), "about") {
 		return false
 	}
