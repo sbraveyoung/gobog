@@ -24,8 +24,8 @@ import (
 	"github.com/SmartBrave/gobog/pkg/dao"
 	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
-	"github.com/facebookgo/grace/gracehttp"
-	"github.com/russross/blackfriday"
+	"facebookgo/grace/gracehttp"
+	"russross/blackfriday"
 	//"github.com/golang-commonmark/markdown"
 )
 
