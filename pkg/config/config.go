@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"spf13/viper"
+
 	"github.com/SmartBrave/gobog/cmd"
-	"github.com/spf13/viper"
 )
 
 const (
