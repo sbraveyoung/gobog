@@ -22,6 +22,7 @@ import (
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
+	httpc "github.com/SmartBrave/gobog/pkg/httpc"
 	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
 	"facebookgo/grace/gracehttp"
@@ -86,7 +87,7 @@ func Init() {
 				if subArticle.Tag == config.DIR {
 					continue
 				}
-				subArticle.Url = "/post/" + article.Id + "/" + subArticle.Id
+				subArticle.Url = "/posts/" + article.Id + "/" + subArticle.Id
 				article.SubArticle = append(article.SubArticle, subArticle)
 			}
 			sort.Sort(article.SubArticle)
@@ -154,8 +155,41 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/404", notFoundHandler)
 	mux.HandleFunc("/version", versionHandler)
 	mux.HandleFunc("/resume", resumeHandler)
+	mux.HandleFunc("/bing_img", bingImgHandler)
 
 	return mux
+}
+
+func bingImgHandler(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if err := recover(); err != nil {
+			logs.Error("panic")
+		}
+	}()
+	url := "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
+
+	client := httpc.NewHttpClient(url).M("GET")
+	respCode, data, err := client.Do()
+	if err != nil || respCode != 200 {
+		logs.Error(url, err)
+		w.Write([]byte("Server Error"))
+		return
+	}
+	var j resp
+	err = data.Unmarshal(&j)
+	if err != nil {
+		logs.Error(url, err)
+		w.Write([]byte("Server Error"))
+		return
+	}
+
+	_, image, err := httpc.NewHttpClient("https://cn.bing.com" + j.Images[0].Url).M("GET").Do()
+	if err != nil {
+		logs.Error(err)
+		w.Write([]byte("Server Error"))
+		return
+	}
+	w.Write(image.Data)
 }
 
 func versionHandler(w http.ResponseWriter, r *http.Request) {
@@ -397,12 +431,12 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	logs.Info(r.Header)
 	logs.Info(r.Body)
 
-	//BUG:has error when url is '/post/abc/dev' when '/post/abc' is a article .
+	//BUG:has error when url is '/posts/abc/dev' when '/posts/abc' is a article .
 	url := r.URL.Path
 	fmt.Println(url)
 	url = strings.TrimLeft(url, "/")
 	paths := strings.Split(url, "/")
-	if strings.Compare(paths[0], "post") == 0 {
+	if strings.Compare(paths[0], "posts") == 0 {
 		paths = paths[1:]
 		if len(paths) < 1 {
 			logs.Warn("len(paths) < 1")
@@ -531,7 +565,7 @@ func newArticle(filePath string, fatherId string) (*config.ArticleType, error) {
 		s := strconv.FormatUint(uint64(ieee.Sum32()), 16)
 		article.Id = s
 
-		article.Url = "/post/" + article.Id
+		article.Url = "/posts/" + article.Id
 
 		return &article, nil
 	}
@@ -607,9 +641,9 @@ out:
 	if strings.Compare(article.Url, "") == 0 {
 		//FIXME:the url is error when its in a directory
 		if strings.Compare(fatherId, "") == 0 {
-			article.Url = "/post/" + article.Id
+			article.Url = "/posts/" + article.Id
 		} else {
-			article.Url = "/post/" + fatherId + "/" + article.Id
+			article.Url = "/posts/" + fatherId + "/" + article.Id
 		}
 	}
 	if strings.Compare(article.Time, "") == 0 {
