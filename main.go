@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"logs"
 	"os"
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
 	"github.com/SmartBrave/gobog/pkg/server"
+	"github.com/logs"
 )
 
 var (

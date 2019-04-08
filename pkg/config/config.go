@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"spf13/viper"
+	"github.com/spf13/viper"
 
 	"github.com/SmartBrave/gobog/cmd"
 )

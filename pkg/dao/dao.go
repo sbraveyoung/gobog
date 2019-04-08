@@ -2,7 +2,8 @@ package dao
 
 import (
 	"errors"
-	"logs"
+
+	"github.com/logs"
 
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/mysql"

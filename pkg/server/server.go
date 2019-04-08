@@ -10,7 +10,6 @@ import (
 	"hash/crc32"
 	"html/template"
 	"io"
-	"logs"
 	"net/http"
 	"os"
 	"sort"
@@ -20,13 +19,15 @@ import (
 	ttemplate "text/template"
 	"time"
 
+	"github.com/logs"
+
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
 	httpc "github.com/SmartBrave/gobog/pkg/httpc"
 	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
-	"facebookgo/grace/gracehttp"
-	"russross/blackfriday"
+	"github.com/facebookgo/grace/gracehttp"
+	"github.com/russross/blackfriday"
 	//"github.com/golang-commonmark/markdown"
 )
 

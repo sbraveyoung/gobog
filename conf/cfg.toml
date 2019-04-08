@@ -12,7 +12,7 @@ logLevel=8
 [http]
 cert="cert/1_www.sbrave.cn_bundle.crt"
 key="cert/2_www.sbrave.cn.key"
-addr=["81"]
+addr=["80"]
 addrs=["443"]
 # listen 80 address needs root permission
 

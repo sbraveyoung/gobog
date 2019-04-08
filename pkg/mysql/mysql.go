@@ -3,7 +3,7 @@ package mysql
 import (
 	"database/sql"
 
-	_ "go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/SmartBrave/gobog/pkg/config"
 )
