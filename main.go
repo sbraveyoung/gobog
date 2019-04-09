@@ -7,7 +7,7 @@ import (
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
 	"github.com/SmartBrave/gobog/pkg/server"
-	"github.com/logs"
+	"github.com/astaxie/beego/logs"
 )
 
 var (

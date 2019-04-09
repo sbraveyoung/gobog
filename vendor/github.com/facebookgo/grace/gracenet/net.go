@@ -20,7 +20,6 @@ import (
 
 const (
 	// Used to indicate a graceful restart in the new process.
-	//socket值
 	envCountKey       = "LISTEN_FDS"
 	envCountKeyPrefix = envCountKey + "="
 )

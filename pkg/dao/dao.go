@@ -3,11 +3,10 @@ package dao
 import (
 	"errors"
 
-	"github.com/logs"
-
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/mysql"
 	"github.com/SmartBrave/gobog/pkg/structs"
+	"github.com/astaxie/beego/logs"
 )
 
 type Dao struct {
