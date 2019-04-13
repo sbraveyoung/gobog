@@ -22,7 +22,6 @@ func init() {
 		os.Exit(1)
 	}
 
-	logs.LogInit(c.Log.RunMode, c.Log.LogFileName, c.Log.LogMaxLines, c.Log.LogMaxSize, c.Log.LogDaily, c.Log.LogRotate, c.Log.LogLevel)
 	logs.SetLogFuncCall(true)
 
 	if err = dao.Init(c); err != nil {
