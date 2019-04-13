@@ -7,9 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spf13/viper"
-
 	"github.com/SmartBrave/gobog/cmd"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -175,7 +174,7 @@ func (c *Config) parseFlag() {
 				os.Exit(1)
 			}
 			os.Exit(0)
-		case "version":
+		case "v", "version":
 			showVersion()
 			os.Exit(0)
 		default:
@@ -215,7 +214,7 @@ func showHelp() {
 Commands:
 	help            Get help on a command.
 	version         Show version information.
-	init [path]     Create a new blog folder.It default current folder if no path option.
+	init [path]     Create a new blog folder. Default current folder if no path option.
 `
 
 	fmt.Printf(helpInfo, strings.TrimPrefix(os.Args[0], "./"))
