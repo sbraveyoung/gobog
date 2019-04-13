@@ -22,7 +22,9 @@ import (
 	"github.com/SmartBrave/gobog/pkg/config"
 	"github.com/SmartBrave/gobog/pkg/dao"
 	httpc "github.com/SmartBrave/gobog/pkg/httpc"
+	"github.com/SmartBrave/gobog/pkg/search"
 	"github.com/astaxie/beego/logs"
+
 	//"github.com/SmartBrave/gobog/pkg/log"
 	//"github.com/SmartBrave/gobog/pkg/markdown"
 	"github.com/facebookgo/grace/gracehttp"
@@ -31,13 +33,20 @@ import (
 )
 
 var (
-	c *config.Config
+	c      *config.Config
+	engine search.Engine
 )
 
 func Init() {
 
-	logs.Info(c.Blog.PostPath)
+	var err error
+	engine, err = search.New()
+	if err != nil {
+		logs.Error(err)
+		os.Exit(1)
+	}
 
+	logs.Info(c.Blog.PostPath)
 	file, err := os.Open(c.Blog.PostPath)
 	if err != nil {
 		logs.Error(err)
@@ -95,6 +104,12 @@ func Init() {
 		c.Blog.Articles = append(c.Blog.Articles, article)
 	}
 	sort.Sort(c.Blog.Articles)
+
+	for index, article := range c.Blog.Articles {
+		if article.Tag == config.FILE {
+			engine.Cut(strconv.Itoa(index), string(article.Content))
+		}
+	}
 }
 
 func New(conf *config.Config) {
@@ -156,8 +171,57 @@ func newHandler() http.Handler {
 	mux.HandleFunc("/version", versionHandler)
 	mux.HandleFunc("/resume", resumeHandler)
 	mux.HandleFunc("/bing_img", bingImgHandler)
+	mux.HandleFunc("/search", searchHandler)
 
 	return mux
+}
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+
+	logs.Info(r.URL)
+	logs.Info(r.Method)
+	logs.Info(r.Host)
+	logs.Info(r.Header)
+	logs.Info(r.Body)
+
+	url := r.URL.Path
+	fmt.Println(url)
+
+	indexs := []string{}
+	switch r.Method {
+	case "GET":
+		query := r.FormValue("query")
+		if query == "" {
+			//when press register button
+			w.Write([]byte("nil."))
+			return
+		} else {
+			querys := strings.Split(query, "+")
+			indexs = engine.Search(querys)
+		}
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	articles := config.ArticlesType{}
+	for _, index := range indexs {
+		n, err := strconv.Atoi(index)
+		if err != nil {
+			//log
+			continue
+		}
+		if n >= len(c.Blog.Articles)-2 {
+			continue
+		}
+		articles = append(articles, c.Blog.Articles[n])
+	}
+	t, _ := template.ParseFiles("themes/" + c.Blog.Theme + "/index.html")
+	err := t.Execute(w, articles)
+	if err != nil {
+		logs.Error("t.Execute occur some err: ", err)
+		//w.WriteHeader(http.StatusInternalServerError)
+	}
+
 }
 
 func bingImgHandler(w http.ResponseWriter, r *http.Request) {
