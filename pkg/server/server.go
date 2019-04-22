@@ -19,7 +19,6 @@ import (
 	"github.com/SmartBrave/gobog/pkg/dao"
 	httpc "github.com/SmartBrave/gobog/pkg/httpc"
 	"github.com/astaxie/beego/logs"
-	"github.com/qiniu/x/log.v7"
 
 	//"github.com/SmartBrave/gobog/pkg/markdown"
 	"github.com/facebookgo/grace/gracehttp"
@@ -63,7 +62,6 @@ func (blog *Blog) init() {
 			logs.Error(err)
 			continue
 		}
-		log.Info("init ", path, " success!")
 
 		if art.Tag == article.DIR {
 			subPosts, err := os.Open(path)
@@ -92,10 +90,12 @@ func (blog *Blog) init() {
 				if subArt.Tag == article.DIR {
 					continue
 				}
-				log.Info("init ", subPath, " success!")
+				logs.Info("init ", subPath, " success!")
 				art.SubArticle = append(art.SubArticle, &subArt)
 			}
 			sort.Sort(art.SubArticle)
+		} else {
+			logs.Info("init ", path, " success!")
 		}
 		blog.articles = append(blog.articles, &art)
 	}
@@ -163,7 +163,7 @@ func (blog *Blog) newHandler() http.Handler {
 
 func logMiddle(f func(http.ResponseWriter, *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Info(fmt.Sprintf("%s %s %s %v %v", r.Method, r.URL, r.Host, r.Header, r.Body))
+		logs.Info(fmt.Sprintf("%s %s %s %v %v", r.Method, r.URL, r.Host, r.Header, r.Body))
 		f(w, r)
 	}
 }

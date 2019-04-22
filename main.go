@@ -29,6 +29,7 @@ func init() {
 		os.Exit(1)
 	}
 	logs.EnableFuncCallDepth(true)
+	logs.SetLogFuncCallDepth(3)
 	logs.SetLogger(logs.AdapterFile, string(logConfig))
 
 	if err = dao.Init(c); err != nil {

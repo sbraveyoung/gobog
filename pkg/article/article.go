@@ -25,13 +25,10 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 	article := ArticleType{
 		FilePath: filePath,
 		Author:   author,
-		Tag:      DIR,
+		Tag:      FILE,
 	}
 	if len(fatherId) != 0 && len(fatherId) != 1 {
 		return article, errors.New(fmt.Sprintf("fatherId is err. len(fatherId):%d", len(fatherId)))
-	}
-	if len(fatherId) == 0 {
-		article.Tag = FILE
 	}
 
 	fileInfo, err := os.Stat(filePath)
@@ -74,9 +71,9 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 			return article, err
 		}
 
-		article.Content = append(article.Content, []byte(line)...)
-		if strings.HasPrefix(line, "---end--") {
+		if strings.HasPrefix(line, "---end---") {
 			items := strings.Split(string(article.Content), "\n")
+			items = items[:len(items)-1]
 			for _, item := range items {
 				slice := strings.Split(item, ": ")
 				if len(slice) != 2 {
@@ -103,6 +100,8 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 				}
 			}
 			article.Content = []byte{}
+		} else {
+			article.Content = append(article.Content, []byte(line)...)
 		}
 	}
 
