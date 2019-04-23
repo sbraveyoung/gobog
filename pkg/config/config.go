@@ -20,6 +20,7 @@ type LogConfig struct {
 	Daily    bool   `mapstructure:"daily" json:"daily"`
 	Maxdays  int    `mapstructure:"maxdays" json:"maxdays"`
 	Color    bool   `mapstructure:"color" json:"color"`
+	Perm     string `mapstructure:"perm" json:"perm"`
 }
 
 type HttpConfig struct {

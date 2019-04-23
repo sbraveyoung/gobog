@@ -7,6 +7,7 @@ maxsize=0                   #max size per file
 daily=true                  #daily rotate
 maxdays=10                  #how many days saved log file
 color=true                  #color
+perm="0755"                 #permission
 
 [http]
 cert="./cert/1_www.sbrave.cn_bundle.crt"
