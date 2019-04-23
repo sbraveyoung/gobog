@@ -1,36 +1,30 @@
 
 [log]
-formatStr="%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}"
-runMode="dev"
-logFileName="./logs/gobog.log"
-logMaxLines=1000000
-logMaxSize=1000000
-logDaily=true
-logRotate=true
-logLevel=8
+filename="./logs/gobog.log" #log file name
+level=7                     #log level
+maxlines=0                  #max lines per file
+maxsize=0                   #max size per file
+daily=true                  #daily rotate
+maxdays=10                  #how many days saved log file
+color=true                  #color
+perm="0755"                 #permission
 
 [http]
-cert="cert/1_www.sbrave.cn_bundle.crt"
-key="cert/2_www.sbrave.cn.key"
+cert="./cert/1_www.sbrave.cn_bundle.crt"
+key="./cert/2_www.sbrave.cn.key"
+# listen 80 address needs root permission
 addr=["80"]
 addrs=["443"]
-# listen 80 address needs root permission
 
 [blog]
+domain="https://sbrave.cn"
 title="smart的个人博客"
 subtitle="代码分享专栏"
 description="阅读·实践·分享"
 --description="Stay hungry,stay foolish."
 author="smart"
-theme="simple"
-csspath="./themes/simple/css"
-jspath="./themes/simple/js"
-domain="https://www.sbrave.cn"
-postpath="./_source/post"
-aboutpath="./_source/about"
-imagepath="./_source/image"
-videopath="./_source/video"
-audiopath="./_source/audio"
+theme="themes/simple"
+source="_source"
 
 [mysql]
 user="user"

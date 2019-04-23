@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -22,7 +23,14 @@ func init() {
 		os.Exit(1)
 	}
 
-	logs.SetLogFuncCall(true)
+	logConfig, err := json.Marshal(c.Log)
+	if err != nil {
+		fmt.Printf("marshal fail. err: %v\n", err)
+		os.Exit(1)
+	}
+	logs.EnableFuncCallDepth(true)
+	logs.SetLogFuncCallDepth(3)
+	logs.SetLogger(logs.AdapterFile, string(logConfig))
 
 	if err = dao.Init(c); err != nil {
 		fmt.Printf("dao.Init() fail. err: %v\n", err)
@@ -31,5 +39,6 @@ func init() {
 }
 
 func main() {
-	server.New(c)
+	blog := server.New(c)
+	blog.Run()
 }
