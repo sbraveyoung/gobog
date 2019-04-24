@@ -136,7 +136,7 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 	writeString = append(writeString, []byte("date: "+article.Time+"\n")...)
 	writeString = append(writeString, []byte("url: "+article.Url+"\n")...)
 	writeString = append(writeString, []byte("id: "+article.Id+"\n")...)
-	writeString = append(writeString, []byte("---end---\n\n")...)
+	writeString = append(writeString, []byte("---end---\n")...)
 	writeString = append(writeString, article.Content...)
 	_, err = writer.WriteString(string(writeString))
 	if err != nil {
