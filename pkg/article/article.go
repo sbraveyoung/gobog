@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/SmartBrave/beego/logs"
 	"github.com/SmartBrave/gobog/pkg/config"
+	"github.com/astaxie/beego/logs"
 )
 
 const (
