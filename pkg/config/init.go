@@ -4,6 +4,7 @@ import "os"
 
 var (
 	DIRS = map[string]string{
+		"drafts": "drafts",
 		"posts":  "posts",
 		"images": "images",
 		"videos": "videos",

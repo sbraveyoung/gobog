@@ -69,7 +69,7 @@ func (blog *Blog) init() {
 			continue
 		}
 		path := fmt.Sprintf("%s/%s/%s", blog.conf.Blog.Source, config.DIRS["posts"], name)
-		art, err := article.NewArticle(path, blog.conf.Blog.Author)
+		art, err := article.NewArticle(path, blog.conf.Blog)
 		if err != nil {
 			logs.Error(err)
 			continue
@@ -94,7 +94,7 @@ func (blog *Blog) init() {
 					continue
 				}
 				subPath := fmt.Sprintf("%s/%s", path, subName)
-				subArt, err := article.NewArticle(subPath, blog.conf.Blog.Author, art.Id)
+				subArt, err := article.NewArticle(subPath, blog.conf.Blog, art.Id)
 				if err != nil {
 					logs.Error(err)
 					continue
