@@ -24,7 +24,7 @@ description="阅读·实践·分享"
 --description="Stay hungry,stay foolish."
 author="smart"
 theme="themes/simple"
-source="_source"
+source="source"
 
 [mysql]
 user="user"

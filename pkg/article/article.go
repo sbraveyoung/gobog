@@ -21,10 +21,16 @@ const (
 	DIR
 )
 
-func NewArticle(filePath string, author string, fatherId ...string) (ArticleType, error) {
+const (
+	BEGIN = iota
+	END
+	NONE
+)
+
+func NewArticle(filePath string, blog config.BlogConfig, fatherId ...string) (ArticleType, error) {
 	article := ArticleType{
 		FilePath: filePath,
-		Author:   author,
+		Author:   blog.Author,
 		Tag:      FILE,
 	}
 	if len(fatherId) != 0 && len(fatherId) != 1 {
@@ -62,6 +68,7 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 	}
 
 	reader := bufio.NewReader(file)
+	stat := NONE
 	for {
 		line, err := reader.ReadString('\n')
 		if err == io.EOF {
@@ -71,35 +78,42 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 			return article, err
 		}
 
-		if strings.HasPrefix(line, "---end---") {
-			items := strings.Split(string(article.Content), "\n")
-			items = items[:len(items)-1]
-			for _, item := range items {
-				slice := strings.Split(item, ": ")
-				if len(slice) != 2 {
-					logs.Warn(article.Title, " has error header:", item)
-					continue
+		//FIXME: can not use "---" for line in markdown, could use "***" instead.
+		if strings.HasPrefix(line, "---") && stat != END {
+			if stat == NONE {
+				stat = BEGIN
+			} else if stat == BEGIN {
+				stat = END
+				items := strings.Split(string(article.Content), "\n")
+				items = items[:len(items)-1]
+				for _, item := range items {
+					slice := strings.Split(item, ": ")
+					if len(slice) != 2 {
+						logs.Warn(article.Title, " has error header:", item)
+						continue
+					}
+					slice[1] = strings.TrimRight(slice[1], "\n")
+					switch slice[0] {
+					case "title", "Title", "TITLE":
+						article.Title = slice[1]
+					case "date", "Date", "DATE":
+						article.Time = slice[1]
+					case "author", "Author", "AUTHOR":
+						article.Author = slice[1]
+					case "url", "Url", "URL":
+						article.Url = slice[1]
+					case "description", "Description", "DESCRIPTION":
+						article.Description = slice[1]
+					case "id", "Id", "ID":
+						article.Id = slice[1]
+					default:
+						//FIXME: could clean other metadata, but don't care it.
+						logs.Warn(article.Title, " has error header:", item)
+						continue
+					}
 				}
-				slice[1] = strings.TrimRight(slice[1], "\n")
-				switch slice[0] {
-				case "title", "Title", "TITLE":
-					article.Title = slice[1]
-				case "date", "Date", "DATE":
-					article.Time = slice[1]
-				case "author", "Author", "AUTHOR":
-					article.Author = slice[1]
-				case "url", "Url", "URL":
-					article.Url = slice[1]
-				case "description", "Description", "DESCRIPTION":
-					article.Description = slice[1]
-				case "id", "Id", "ID":
-					article.Id = slice[1]
-				default:
-					logs.Warn(article.Title, " has error header:", item)
-					continue
-				}
+				article.Content = []byte{}
 			}
-			article.Content = []byte{}
 		} else {
 			article.Content = append(article.Content, []byte(line)...)
 		}
@@ -131,12 +145,13 @@ func NewArticle(filePath string, author string, fatherId ...string) (ArticleType
 	//Future: could not write every time if this article is not publish first.
 	writeString := []byte{}
 	writer := bufio.NewWriter(file)
+	writeString = append(writeString, []byte("---\n ")...)
 	writeString = append(writeString, []byte("title: "+article.Title+"\n")...)
 	writeString = append(writeString, []byte("author: "+article.Author+"\n")...)
 	writeString = append(writeString, []byte("date: "+article.Time+"\n")...)
 	writeString = append(writeString, []byte("url: "+article.Url+"\n")...)
 	writeString = append(writeString, []byte("id: "+article.Id+"\n")...)
-	writeString = append(writeString, []byte("---end---\n")...)
+	writeString = append(writeString, []byte("---\n")...)
 	writeString = append(writeString, article.Content...)
 	_, err = writer.WriteString(string(writeString))
 	if err != nil {
