@@ -1,6 +1,5 @@
-
 [log]
-filename="./logs/gobog.log" #log file name
+log_path="./logs/gobog.log" #log file name
 level=7                     #log level
 maxlines=0                  #max lines per file
 maxsize=0                   #max size per file
@@ -10,11 +9,11 @@ color=true                  #color
 perm="0755"                 #permission
 
 [http]
-cert="./cert/1_www.sbrave.cn_bundle.crt"
-key="./cert/2_www.sbrave.cn.key"
+cert="/home/smart/downloads/blog/cert/1_sbrave.cn_bundle.crt"
+key="/home/smart/downloads/blog/cert/2_sbrave.cn.key"
 # listen 80 address needs root permission
-addr=["80"]
-addrs=["443"]
+addr=":80"
+addrs=":443"
 
 [blog]
 domain="https://sbrave.cn"
@@ -24,9 +23,4 @@ description="阅读·实践·分享"
 --description="Stay hungry,stay foolish."
 author="smart"
 theme="themes/simple"
-source="source"
-
-[mysql]
-user="user"
-passwd=""
-db="blog"
+source="/home/smart/downloads/blog/source"
