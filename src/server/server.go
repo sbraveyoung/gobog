@@ -13,7 +13,7 @@ import (
 	articlepkg "github.com/SmartBrave/gobog/src/article"
 	"github.com/SmartBrave/gobog/src/blog"
 	"github.com/SmartBrave/gobog/src/config"
-	httpc "github.com/SmartBrave/utils/httpc"
+	httpc "github.com/SmartBrave/utils/easyhttpclient"
 	"github.com/astaxie/beego/logs"
 	"github.com/grace/gracehttp"
 	"github.com/russross/blackfriday"
@@ -92,6 +92,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t, _ := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	//XXX 顶层 articles 可以看成一个 article，然后可以 set 顶层 article title 为 gobog，以便于在 html 模板中配置
 	err := t.Execute(w, blog.Blog.Articles[blog.BlogTypes["post"]])
 	if err != nil {
 		logs.Error("t.Execute occur some err: ", err)
