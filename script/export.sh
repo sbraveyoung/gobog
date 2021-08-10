@@ -15,27 +15,27 @@ function init(){
 }
 
 function download_post(){
-    http ${HOST} > ${INDEX_FILE}
+    curl ${HOST} > ${INDEX_FILE}
     cat ${INDEX_FILE} | grep "tag=\"export\"" | grep -oP "/post/.*?\"" | sed 's/"//g' | while read line
     do
         #not dir
         path=${DST_DIR}$line
         echo "now save "$path
         mkdir -p $path
-        http ${HOST}$line > $path/index.html </dev/null
+        curl ${HOST}$line > $path/index.html </dev/null
 
         cat $path/index.html | grep "tag=\"export\"" | grep -oP "/post/.*/.*?\"" | sed 's/"//g' | while read subline
         do
             path=${DST_DIR}$subline
             echo "now save "$path
             mkdir -p $path
-            http ${HOST}$subline > $path/index.html </dev/null
+            curl ${HOST}$subline > $path/index.html </dev/null
         done
     done
 }
 
 function download_about(){
-    http ${HOST}/about > ${ABOUT_FILE}
+    curl ${HOST}/about > ${ABOUT_FILE}
 }
 
 function copy_static_path(){
