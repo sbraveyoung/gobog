@@ -14,11 +14,11 @@ RUN wget https://golang.org/dl/go1.16.7.linux-amd64.tar.gz \
 COPY . $GOPATH/src/github.com/SmartBrave/gobog
 WORKDIR $GOPATH/src/github.com/SmartBrave/gobog
 
-RUN go build src/main.go
+RUN /usr/local/go build src/main.go
 RUN cert_path=$CERT_PATH && sed -i "s/\${YOUR_CERT_PATH}/$cert_path/g" conf/config.toml
 # RUN sed -i "s/\${YOUR_SOURCE_PATH}/\$SOURCE_PATH/g" conf/config.toml
 # RUN sed -i "s/\${IMAGE_PATH}/\$IMAGE_PATH/g" script/export.sh
 
 # CMD /usr/bin/bash
 # CMD ./main
-CMD pwd && echo "-----------------------" && ls * && echo "--------------------------------" && cat conf/config.toml && echo "--------------------------------------" && cat script/export.sh
+CMD pwd && echo "-----------------------" && ls * && echo "--------------------------------" && cat conf/config.toml && echo "--------------------------------------" && cat script/export.sh && echo "-------------------------------" && /usr/local/go env
