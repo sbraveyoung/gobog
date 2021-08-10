@@ -12,6 +12,7 @@ ARG  IMAGE_PATH=..\\/..\\/blog\\/source\\/image
 # RUN wget https://golang.org/dl/go1.16.7.linux-amd64.tar.gz \
     # && tar xvf go1.16.7.linux-amd64.tar.gz \
     # && cp -r go /usr/local/go
+    #
 
 COPY . $GOPATH/src/github.com/SmartBrave/gobog
 WORKDIR $GOPATH/src/github.com/SmartBrave/gobog
@@ -23,4 +24,4 @@ RUN sed -i "s/\${YOUR_SOURCE_PATH}/$SOURCE_PATH/g" conf/config.toml
 RUN sed -i "s/\${IMAGE_PATH}/$IMAGE_PATH/g" script/export.sh
 
 # CMD ./main
-CMD pwd && ls ../*
+CMD pwd && ls /go/src/github.com/SmartBrave && echo "-------------------" && ls /go/src/github.com/SmartBrave/* && ./main
