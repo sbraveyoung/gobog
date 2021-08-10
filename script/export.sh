@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 DST_DIR=./export
 INDEX_FILE=${DST_DIR}/index.html
