@@ -6,7 +6,7 @@ ABOUT_DIR=${DST_DIR}/about
 ABOUT_FILE=${ABOUT_DIR}/index.html
 POST_DIR=${DST_DIR}/post
 STATIC_FILE_DIR=../themes/simple
-IMAGE_DIR=/home/smart/downloads/blog/source/image
+IMAGE_DIR=${IMAGE_PATH}
 HOST="http://localhost:80"
 
 function init(){
