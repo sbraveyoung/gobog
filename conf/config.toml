@@ -9,8 +9,8 @@ color=true                  #color
 perm="0755"                 #permission
 
 [http]
-cert="/home/smart/downloads/blog/cert/1_sbrave.cn_bundle.crt"
-key="/home/smart/downloads/blog/cert/2_sbrave.cn.key"
+cert="${YOUR_CERT_PATH}/cert/1_sbrave.cn_bundle.crt"
+key="${YOUR_CERT_PATH}/cert/2_sbrave.cn.key"
 # listen 80 address needs root permission
 addr=":80"
 addrs=":443"
@@ -23,4 +23,4 @@ description="阅读·实践·分享"
 --description="Stay hungry,stay foolish."
 author="smart"
 theme="themes/simple"
-source="/home/smart/downloads/blog/source"
+source="${YOUR_SOURCE_PATH}/source"

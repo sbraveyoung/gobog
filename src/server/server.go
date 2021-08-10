@@ -15,7 +15,7 @@ import (
 	"github.com/SmartBrave/gobog/src/config"
 	httpc "github.com/SmartBrave/utils/easyhttpclient"
 	"github.com/astaxie/beego/logs"
-	"github.com/grace/gracehttp"
+	"github.com/facebookarchive/grace/gracehttp"
 	"github.com/russross/blackfriday"
 	//"github.com/SmartBrave/gobog/src/markdown"
 	//"github.com/golang-commonmark/markdown"
