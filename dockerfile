@@ -23,5 +23,4 @@ RUN sed -i "s/\${YOUR_CERT_PATH}/$CERT_PATH/g" conf/config.toml
 RUN sed -i "s/\${YOUR_SOURCE_PATH}/$SOURCE_PATH/g" conf/config.toml
 RUN sed -i "s/\${IMAGE_PATH}/$IMAGE_PATH/g" script/export.sh
 
-# CMD ./main
-CMD pwd && ls /go/src/github.com/SmartBrave && echo "-------------------" && ls /go/src/github.com/SmartBrave/* && ./main
+CMD ./main
