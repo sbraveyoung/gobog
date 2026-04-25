@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -330,7 +331,31 @@ func safeServeFile(w http.ResponseWriter, r *http.Request, root, prefix string) 
 }
 
 func imageHandler(w http.ResponseWriter, r *http.Request) {
-	safeServeFile(w, r, config.C.Blog.Source, "/image/")
+	// First try the legacy <source>/image/<rest> path. If the file isn't
+	// there, fall back to the vault image index by basename, which lets
+	// Obsidian users keep images alongside their notes (or in any
+	// attachments folder) instead of forcing them into a single dir.
+	cleaned := path.Clean("/" + r.URL.Path)
+	if strings.HasPrefix(cleaned, "/image/") {
+		legacyAbs, _ := filepath.Abs(filepath.Join(config.C.Blog.Source, filepath.FromSlash(cleaned)))
+		rootAbs, _ := filepath.Abs(config.C.Blog.Source)
+		if legacyAbs != "" && strings.HasPrefix(legacyAbs, rootAbs+string(filepath.Separator)) {
+			if fi, err := os.Stat(legacyAbs); err == nil && !fi.IsDir() {
+				http.ServeFile(w, r, legacyAbs)
+				return
+			}
+		}
+		base := path.Base(cleaned)
+		if rel := blog.Blog.Wiki().ResolveImage(base); rel != "" {
+			full := filepath.Join(config.C.Blog.Source, filepath.FromSlash(rel))
+			fullAbs, _ := filepath.Abs(full)
+			if fullAbs != "" && strings.HasPrefix(fullAbs, rootAbs+string(filepath.Separator)) {
+				http.ServeFile(w, r, full)
+				return
+			}
+		}
+	}
+	http.NotFound(w, r)
 }
 
 func cssHandler(w http.ResponseWriter, r *http.Request) {

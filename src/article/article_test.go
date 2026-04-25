@@ -202,6 +202,59 @@ func TestIsDraft(t *testing.T) {
 	}
 }
 
+func TestSlugify(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"Hello World", "hello-world"},
+		{"A_B C.d", "a-b-c-d"},
+		{"  spaces  ", "spaces"},
+		{"--leading-and-trailing--", "leading-and-trailing"},
+		{"中文", ""},               // CJK gets dropped
+		{"中文 mixed 123", "mixed-123"},
+		{"!@#$%", ""},
+	}
+	for _, c := range cases {
+		if got := Slugify(c.in); got != c.want {
+			t.Errorf("Slugify(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestSlugOrHashFallback(t *testing.T) {
+	if got := SlugOrHash("中文"); got == "" {
+		t.Errorf("expected hex fallback for CJK-only input, got empty")
+	}
+	if got := SlugOrHash("Hello"); got != "hello" {
+		t.Errorf("SlugOrHash(Hello) = %q, want hello", got)
+	}
+}
+
+func TestParseFileDoesNotRewrite(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "note.md")
+	body := `---
+title: Hello
+tags: [a, b]
+---
+body
+`
+	writeFile(t, p, body)
+	a, err := ParseFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// File on disk must still be byte-identical: ParseFile is read-only.
+	got, _ := os.ReadFile(p)
+	if string(got) != body {
+		t.Errorf("ParseFile mutated source file:\n--got--\n%s\n--want--\n%s", got, body)
+	}
+	// YAML array tags still parse.
+	if len(a.Tags) != 2 || a.Tags[0] != "a" || a.Tags[1] != "b" {
+		t.Errorf("Tags = %v, want [a b]", a.Tags)
+	}
+}
+
 func TestBodySummaryStripsMarkdownAndCodeBlocks(t *testing.T) {
 	body := []byte(`# heading
 

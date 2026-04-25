@@ -3,6 +3,7 @@ package blog
 import (
 	"os"
 	pathpkg "path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -14,16 +15,15 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-var (
-	BlogTypes = map[string]string{
-		"post":  "post",
-		"about": "about",
-	}
-)
+// BlogTypes maps a logical type to the URL prefix used in routes / templates.
+// "post" gets all top-level + nested notes; "about" is a single note (the
+// first .md file under <source>/about/, if present).
+var BlogTypes = map[string]string{
+	"post":  "post",
+	"about": "about",
+}
 
-var (
-	Blog *BlogST
-)
+var Blog *BlogST
 
 type BlogST struct {
 	Domain      string
@@ -36,6 +36,70 @@ type BlogST struct {
 	mu       sync.RWMutex
 	articles map[string]articlepkg.Articles
 	byTag    map[string]articlepkg.Articles
+	wiki     *WikiIndex
+}
+
+// WikiIndex powers Obsidian wikilink + image-embed resolution. Built once per
+// Reload(); read-only afterwards.
+type WikiIndex struct {
+	// notes maps a lookup key (lowercased note title or relative path without
+	// .md extension) to the article's URL. Multiple keys can resolve to the
+	// same article: the file's basename, the relative path, the front-matter
+	// title, and any of those with separators normalized.
+	notes map[string]string
+	// images maps a basename (lowercased, with or without extension) to the
+	// disk path of an asset relative to <source>.
+	images map[string]string
+}
+
+func newWikiIndex() *WikiIndex {
+	return &WikiIndex{notes: make(map[string]string), images: make(map[string]string)}
+}
+
+// NewWikiIndexForTesting builds a WikiIndex from the given maps. The note keys
+// are normalized internally so callers can pass titles or paths verbatim.
+func NewWikiIndexForTesting(notes, images map[string]string) *WikiIndex {
+	w := newWikiIndex()
+	for k, v := range notes {
+		w.notes[normalizeKey(k)] = v
+	}
+	for k, v := range images {
+		w.images[strings.ToLower(k)] = v
+	}
+	return w
+}
+
+// ResolveNote returns the URL for [[link]] target or empty string if unknown.
+func (w *WikiIndex) ResolveNote(target string) string {
+	if w == nil {
+		return ""
+	}
+	t := normalizeKey(target)
+	if u, ok := w.notes[t]; ok {
+		return u
+	}
+	// Try without leading folders ("foo/bar" → "bar").
+	if i := strings.LastIndex(t, "/"); i >= 0 {
+		if u, ok := w.notes[t[i+1:]]; ok {
+			return u
+		}
+	}
+	return ""
+}
+
+// ResolveImage returns the relative-to-source disk path for an image basename.
+func (w *WikiIndex) ResolveImage(basename string) string {
+	if w == nil {
+		return ""
+	}
+	return w.images[strings.ToLower(basename)]
+}
+
+func normalizeKey(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSuffix(s, ".md")
+	s = strings.ToLower(s)
+	return s
 }
 
 func init() {
@@ -48,9 +112,9 @@ func init() {
 		Theme:       config.C.Blog.Theme,
 		articles:    make(map[string]articlepkg.Articles),
 		byTag:       make(map[string]articlepkg.Articles),
+		wiki:        newWikiIndex(),
 	}
 	if config.Testing {
-		// Tests should populate state via SetForTesting if they need it.
 		return
 	}
 
@@ -59,79 +123,68 @@ func init() {
 		os.Exit(1)
 	}
 
-	// Hot reload on .md changes when running as a server (we still scan
-	// once for export mode, but a watcher there would just leak goroutines).
 	if config.ExportDir == "" {
 		Blog.startWatcher()
 	}
 }
 
-// SetForTesting replaces the in-memory article index. Test-only helper.
+// SetForTesting replaces the in-memory article index.
 func (b *BlogST) SetForTesting(byType map[string]articlepkg.Articles) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.articles = byType
 	b.byTag = buildTagIndex(byType[BlogTypes["post"]])
+	b.wiki = newWikiIndex()
 }
 
-// Reload re-scans the source directory and atomically replaces the in-memory
-// article index. Safe to call concurrently with reads.
-func (b *BlogST) Reload() error {
-	articles := make(map[string]articlepkg.Articles)
-	for _, tYpe := range BlogTypes {
-		rootPath := pathpkg.Join(config.C.Blog.Source, tYpe)
-		root, err := os.Open(rootPath)
-		if err != nil {
-			return err
-		}
-		names, err := root.Readdirnames(-1)
-		root.Close()
-		if err != nil {
-			return err
-		}
+// Wiki returns the current wiki index. Safe for read; treat as immutable.
+func (b *BlogST) Wiki() *WikiIndex {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.wiki
+}
 
-		var list articlepkg.Articles
-		for _, name := range names {
-			if strings.HasPrefix(name, ".") {
-				continue
-			}
-			path := pathpkg.Join(rootPath, name)
-			fileInfo, err := os.Lstat(path)
-			if err != nil {
-				logs.Warn("os.Lstat err:", err)
-				continue
-			}
-			if fileInfo.IsDir() {
-				art, err := articlepkg.NewArticle(path, articlepkg.DIR, "/"+tYpe)
-				if err != nil {
-					logs.Warn("NewArticle dir err:", err, " path:", path)
-					continue
-				}
-				if err := loadGroup(art, path); err != nil {
-					logs.Warn("loadGroup err:", err)
-					continue
-				}
-				if len(art.SubArticle) == 0 {
-					continue
-				}
-				list = append(list, art)
-			} else {
-				if !strings.HasSuffix(path, ".md") {
-					continue
-				}
-				art, err := articlepkg.NewArticle(path, articlepkg.ARTICLE, "/"+tYpe)
-				if err != nil {
-					logs.Warn("NewArticle err:", err)
-					continue
-				}
-				if art.IsDraft() && !config.C.Blog.IncludeDrafts {
-					continue
-				}
-				list = append(list, art)
-			}
+// Reload re-scans <source> and atomically replaces the in-memory state.
+//
+// Two layouts are supported:
+//
+//   - Legacy gobog: <source>/post/... (group dirs allowed, 1 level deep) and
+//     <source>/about/*.md. Activated when <source>/post/ exists.
+//   - Obsidian-style folder: <source>/ contains arbitrarily nested .md files.
+//     Each subdirectory becomes a group; arbitrary depth is supported. Any
+//     .md placed under <source>/about/ is treated as the single about page
+//     (first by sort order). Anywhere else under <source> is a post.
+func (b *BlogST) Reload() error {
+	source := config.C.Blog.Source
+	useLegacy := dirExists(filepath.Join(source, "post"))
+
+	articles := make(map[string]articlepkg.Articles)
+	wiki := newWikiIndex()
+
+	if useLegacy {
+		posts, err := loadLegacyPosts(filepath.Join(source, "post"))
+		if err != nil {
+			return err
 		}
-		sort.Sort(list)
-		articles[tYpe] = list
+		articles[BlogTypes["post"]] = posts
+	} else {
+		posts, err := loadVaultPosts(source)
+		if err != nil {
+			return err
+		}
+		articles[BlogTypes["post"]] = posts
+	}
+
+	abouts, err := loadAbouts(filepath.Join(source, BlogTypes["about"]))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	articles[BlogTypes["about"]] = abouts
+
+	indexNotes(wiki, articles[BlogTypes["post"]])
+	indexNotes(wiki, abouts)
+	if err := indexImages(wiki, source); err != nil {
+		logs.Warn("image index:", err)
 	}
 
 	tagIndex := buildTagIndex(articles[BlogTypes["post"]])
@@ -139,32 +192,220 @@ func (b *BlogST) Reload() error {
 	b.mu.Lock()
 	b.articles = articles
 	b.byTag = tagIndex
+	b.wiki = wiki
 	b.mu.Unlock()
 	return nil
 }
 
-func loadGroup(group *articlepkg.Article, dir string) error {
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// loadVaultPosts walks source recursively, treating each .md file as a post
+// and each subdirectory as a group. Files under "about/" are excluded (the
+// caller picks them up separately).
+func loadVaultPosts(source string) (articlepkg.Articles, error) {
+	return loadDir(source, source, "/post", true)
+}
+
+// loadDir loads a directory into an Articles slice. dirPath is the directory
+// being walked; sourceRoot is the configured <source> (used to compute
+// relative URLs). urlPrefix is what the resulting article URLs start with.
+// excludeAbout=true skips the top-level "about" subdirectory.
+func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlepkg.Articles, error) {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var list articlepkg.Articles
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		full := filepath.Join(dirPath, name)
+		if e.IsDir() {
+			if excludeAbout && dirPath == sourceRoot && name == "about" {
+				continue
+			}
+			child, err := loadGroupDir(full, sourceRoot, urlPrefix)
+			if err != nil {
+				logs.Warn("loadGroupDir:", err)
+				continue
+			}
+			if child != nil {
+				list = append(list, child)
+			}
+		} else {
+			if !strings.HasSuffix(name, ".md") {
+				continue
+			}
+			art, err := buildArticle(full, sourceRoot, urlPrefix, name)
+			if err != nil {
+				logs.Warn("buildArticle:", err)
+				continue
+			}
+			if art == nil {
+				continue
+			}
+			list = append(list, art)
+		}
+	}
+	sort.Sort(list)
+	return list, nil
+}
+
+// loadGroupDir walks a non-root directory and produces a group Article whose
+// SubArticle list contains the directory's notes (recursively).
+func loadGroupDir(dirPath, sourceRoot, urlPrefix string) (*articlepkg.Article, error) {
+	rel, err := filepath.Rel(sourceRoot, dirPath)
+	if err != nil {
+		return nil, err
+	}
+	groupURL := urlPrefix + "/" + slugifyPath(rel)
+
+	subs, err := loadDir(dirPath, sourceRoot, urlPrefix, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
+		return nil, nil
+	}
+
+	g := &articlepkg.Article{}
+	g.Source = dirPath
+	g.Title = filepath.Base(dirPath)
+	g.Id = articlepkg.SlugOrHash(g.Title)
+	g.URL = groupURL
+	g.CreateTime = subs[0].CreateTime // newest sub becomes the group's date
+	g.SubArticle = subs
+	return g, nil
+}
+
+func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Article, error) {
+	a, err := articlepkg.ParseFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if a.IsDraft() && !config.C.Blog.IncludeDrafts {
+		return nil, nil
+	}
+	rel, err := filepath.Rel(sourceRoot, path)
+	if err != nil {
+		return nil, err
+	}
+	rel = strings.TrimSuffix(rel, ".md")
+	if a.URL == "" {
+		a.URL = urlPrefix + "/" + slugifyPath(rel)
+	}
+	if a.Id == "" {
+		a.Id = articlepkg.SlugOrHash(strings.TrimSuffix(fileName, ".md"))
+	}
+	if a.Title == "" {
+		a.Title = strings.TrimSuffix(fileName, ".md")
+	}
+	if a.CreateTime == "" {
+		// Fall back to file mtime so listings sort sensibly even when the
+		// author hasn't filled in front-matter.
+		if fi, err := os.Stat(path); err == nil {
+			a.CreateTime = fi.ModTime().Format(articlepkg.TIME_LAYOUT)
+		} else {
+			a.CreateTime = time.Now().Format(articlepkg.TIME_LAYOUT)
+		}
+	}
+	return a, nil
+}
+
+func slugifyPath(rel string) string {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, articlepkg.SlugOrHash(p))
+	}
+	return strings.Join(out, "/")
+}
+
+// loadLegacyPosts mimics the original gobog scanner: <source>/post/ with
+// optional 1-level group subdirectories. Kept so existing deployments keep
+// working when <source>/post/ exists.
+func loadLegacyPosts(rootPath string) (articlepkg.Articles, error) {
+	root, err := os.Open(rootPath)
+	if err != nil {
+		return nil, err
+	}
+	names, err := root.Readdirnames(-1)
+	root.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	var list articlepkg.Articles
+	for _, name := range names {
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		path := pathpkg.Join(rootPath, name)
+		fi, err := os.Lstat(path)
+		if err != nil {
+			logs.Warn("lstat:", err)
+			continue
+		}
+		if fi.IsDir() {
+			art, err := articlepkg.NewArticle(path, articlepkg.DIR, "/post")
+			if err != nil {
+				logs.Warn("NewArticle dir:", err)
+				continue
+			}
+			if err := loadLegacyGroup(art, path); err != nil {
+				logs.Warn("loadLegacyGroup:", err)
+				continue
+			}
+			if len(art.SubArticle) == 0 {
+				continue
+			}
+			list = append(list, art)
+		} else {
+			if !strings.HasSuffix(path, ".md") {
+				continue
+			}
+			art, err := articlepkg.NewArticle(path, articlepkg.ARTICLE, "/post")
+			if err != nil {
+				logs.Warn("NewArticle:", err)
+				continue
+			}
+			if art.IsDraft() && !config.C.Blog.IncludeDrafts {
+				continue
+			}
+			list = append(list, art)
+		}
+	}
+	sort.Sort(list)
+	return list, nil
+}
+
+func loadLegacyGroup(group *articlepkg.Article, dir string) error {
 	subRoot, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
-	subNames, err := subRoot.Readdirnames(-1)
+	names, err := subRoot.Readdirnames(-1)
 	subRoot.Close()
 	if err != nil {
 		return err
 	}
-
-	for _, subName := range subNames {
-		if strings.HasPrefix(subName, ".") {
+	for _, n := range names {
+		if strings.HasPrefix(n, ".") {
 			continue
 		}
-		subPath := pathpkg.Join(dir, subName)
-		if !strings.HasSuffix(subPath, ".md") {
+		p := pathpkg.Join(dir, n)
+		if !strings.HasSuffix(p, ".md") {
 			continue
 		}
-		sub, err := articlepkg.NewArticle(subPath, articlepkg.ARTICLE, group.URL)
+		sub, err := articlepkg.NewArticle(p, articlepkg.ARTICLE, group.URL)
 		if err != nil {
-			logs.Warn("sub article err:", err, " path:", subPath)
+			logs.Warn("sub article:", err)
 			continue
 		}
 		if sub.IsDraft() && !config.C.Blog.IncludeDrafts {
@@ -174,6 +415,107 @@ func loadGroup(group *articlepkg.Article, dir string) error {
 	}
 	sort.Sort(group.SubArticle)
 	return nil
+}
+
+func loadAbouts(dir string) (articlepkg.Articles, error) {
+	if !dirExists(dir) {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var list articlepkg.Articles
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		a, err := articlepkg.ParseFile(full)
+		if err != nil {
+			logs.Warn("about parse:", err)
+			continue
+		}
+		if a.URL == "" {
+			a.URL = "/about"
+		}
+		if a.Title == "" {
+			a.Title = strings.TrimSuffix(e.Name(), ".md")
+		}
+		if a.Id == "" {
+			a.Id = articlepkg.SlugOrHash(a.Title)
+		}
+		if a.CreateTime == "" {
+			if fi, err := os.Stat(full); err == nil {
+				a.CreateTime = fi.ModTime().Format(articlepkg.TIME_LAYOUT)
+			}
+		}
+		list = append(list, a)
+	}
+	sort.Sort(list)
+	return list, nil
+}
+
+// indexNotes registers each article in the wiki index under multiple keys so
+// `[[note title]]`, `[[basename]]`, `[[Folder/Note]]` all resolve.
+func indexNotes(w *WikiIndex, list articlepkg.Articles) {
+	for _, a := range list {
+		register := func(key string) {
+			if key == "" {
+				return
+			}
+			w.notes[normalizeKey(key)] = a.URL
+		}
+		if a.Source != "" {
+			base := filepath.Base(a.Source)
+			register(strings.TrimSuffix(base, ".md"))
+			source := config.C.Blog.Source
+			if rel, err := filepath.Rel(source, a.Source); err == nil {
+				rel = strings.TrimSuffix(filepath.ToSlash(rel), ".md")
+				register(rel)
+			}
+		}
+		register(a.Title)
+		if len(a.SubArticle) > 0 {
+			indexNotes(w, a.SubArticle)
+		}
+	}
+}
+
+// indexImages walks <source> for non-.md files and registers them by basename.
+// /image/<basename> requests will resolve through this map.
+func indexImages(w *WikiIndex, source string) error {
+	return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if strings.HasPrefix(info.Name(), ".") && path != source {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := info.Name()
+		if strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		key := strings.ToLower(name)
+		// First write wins; longer paths don't override earlier shallow ones
+		// (matches Obsidian's behavior of preferring closer files, but we
+		// don't have a "current note" here).
+		if _, ok := w.images[key]; !ok {
+			w.images[key] = rel
+		}
+		return nil
+	})
 }
 
 func buildTagIndex(posts articlepkg.Articles) map[string]articlepkg.Articles {
@@ -196,16 +538,12 @@ func buildTagIndex(posts articlepkg.Articles) map[string]articlepkg.Articles {
 	return idx
 }
 
-// Articles returns the live slice for the given type. Callers must not mutate
-// the returned slice; treat it as read-only.
 func (b *BlogST) Articles(typ string) articlepkg.Articles {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.articles[typ]
 }
 
-// AllPosts returns every post (groups flattened to leaves only). Useful for
-// feeds, sitemap and static export.
 func (b *BlogST) AllPosts() articlepkg.Articles {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -224,16 +562,12 @@ func (b *BlogST) AllPosts() articlepkg.Articles {
 	return out
 }
 
-// Groups returns top-level entries (groups + standalone posts) for the post
-// type, in their stored order. Useful for the index page and static export.
 func (b *BlogST) Groups() articlepkg.Articles {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.articles[BlogTypes["post"]]
 }
 
-// FindByURL walks both the post and about types and returns the article whose
-// URL exactly matches.
 func (b *BlogST) FindByURL(url string) *articlepkg.Article {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -257,7 +591,6 @@ func (b *BlogST) FindByURL(url string) *articlepkg.Article {
 	return nil
 }
 
-// Tags returns all known tags in stable (alphabetical) order.
 func (b *BlogST) Tags() []string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -269,15 +602,12 @@ func (b *BlogST) Tags() []string {
 	return tags
 }
 
-// PostsByTag returns the post list for the given tag.
 func (b *BlogST) PostsByTag(tag string) articlepkg.Articles {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.byTag[tag]
 }
 
-// LatestUpdate returns the most recent post create_time, or zero value if no
-// posts exist. Used for sitemap lastmod and feed updated.
 func (b *BlogST) LatestUpdate() time.Time {
 	var latest time.Time
 	for _, a := range b.AllPosts() {
@@ -295,25 +625,21 @@ func (b *BlogST) LatestUpdate() time.Time {
 func (b *BlogST) startWatcher() {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		logs.Warn("fsnotify NewWatcher err:", err)
+		logs.Warn("fsnotify:", err)
 		return
 	}
 
 	addRecursive := func(root string) {
-		_ = w.Add(root)
-		for _, t := range BlogTypes {
-			sub := pathpkg.Join(root, t)
-			_ = w.Add(sub)
-			entries, err := os.ReadDir(sub)
-			if err != nil {
-				continue
+		_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+			if err != nil || !info.IsDir() {
+				return nil
 			}
-			for _, e := range entries {
-				if e.IsDir() {
-					_ = w.Add(pathpkg.Join(sub, e.Name()))
-				}
+			if strings.HasPrefix(info.Name(), ".") && p != root {
+				return filepath.SkipDir
 			}
-		}
+			_ = w.Add(p)
+			return nil
+		})
 	}
 	addRecursive(config.C.Blog.Source)
 
@@ -343,7 +669,7 @@ func (b *BlogST) startWatcher() {
 				}
 				pending = false
 				if err := b.Reload(); err != nil {
-					logs.Warn("reload err:", err)
+					logs.Warn("reload:", err)
 				} else {
 					logs.Info("blog reloaded")
 				}
@@ -371,7 +697,6 @@ func shouldReload(ev fsnotify.Event) bool {
 	if strings.HasSuffix(base, ".md") {
 		return true
 	}
-	// Directory ops still warrant a reload (new group, deleted group).
 	if ev.Op&(fsnotify.Create|fsnotify.Remove|fsnotify.Rename) != 0 {
 		return true
 	}

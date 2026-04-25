@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`gobog` is a small Markdown-only blog written in Go (module `github.com/SmartBrave/gobog`, Go 1.16). It can run in two modes:
+`gobog` is a small Markdown-only blog written in Go (module `github.com/SmartBrave/gobog`, Go 1.16). It is designed to consume an Obsidian-style folder (typically a subfolder of an Obsidian vault — point `[blog].source` at e.g. `Vault/Blog/`) and run in one of two modes:
 
-- **Server mode** (default): boots two `http.Server`s (HTTP + HTTPS), reads Markdown from `[blog].source` once at startup, watches the directory with `fsnotify` and renders pages on demand using templates from `[blog].theme`.
-- **Static export mode** (`-export <dir>`): renders the entire site into `<dir>` and exits. The output mirrors the gobog HTTP routes one-for-one and is drop-in compatible with the GitHub Pages-style layout used by `sbraveyoung/sbraveyoung.github.io`.
+- **Server mode** (default): boots two `http.Server`s (HTTP + HTTPS), scans `[blog].source` once at startup, watches the directory recursively with `fsnotify`, and renders pages on demand using templates from `[blog].theme`. Wikilinks and image embeds are resolved through an in-memory index built during the scan.
+- **Static export mode** (`-export <dir>`): renders the entire site into `<dir>` and exits. The output mirrors the gobog HTTP routes one-for-one and is drop-in compatible with GitHub Pages.
+
+The Obsidian plugin that drives gobog (push-button "publish my vault") lives in a separate repository — gobog itself never touches git. It just consumes a folder and produces either live HTTP responses or a static tree.
 
 ## Common commands
 
@@ -28,7 +30,9 @@ Binding `:80` / `:443` (defaults in `conf/config.toml`) requires root or `setcap
 The init-driven bootstrap chain is still in place but the long-running serve is now explicit:
 
 1. `src/config.init()` — parses `-config` and `-export`, decodes the TOML into `config.C`. Detects test binaries via the `.test` suffix and skips file I/O so unit tests don't fight the `flag` package.
-2. `src/blog.init()` — constructs `blog.Blog`, calls `Blog.Reload()` to scan `[blog].source` once, then (in serve mode only) starts an `fsnotify` watcher that re-runs `Reload` on every `.md` change with a 300 ms debounce. `BlogST` guards `articles` and `byTag` with a `sync.RWMutex`; reads go through `Articles`/`Groups`/`AllPosts`/`PostsByTag`/`Tags`/`FindByURL`.
+2. `src/blog.init()` — constructs `blog.Blog`, calls `Blog.Reload()` to scan `[blog].source` once, then (in serve mode only) starts a recursive `fsnotify` watcher that re-runs `Reload` on every `.md` change with a 300 ms debounce. `BlogST` guards `articles`, `byTag`, and `wiki` with a `sync.RWMutex`; reads go through `Articles`/`Groups`/`AllPosts`/`PostsByTag`/`Tags`/`FindByURL`/`Wiki`. `Reload` switches between two layouts:
+   - **Vault mode** (no `<source>/post/` directory): walks `<source>` recursively at any depth. Each `.md` becomes a post; each subdirectory becomes a group; URLs are derived from the relative path via `Slugify`. `<source>/about/` is special-cased so the first note inside it becomes `/about`. Hidden directories (`.obsidian/` etc.) are skipped.
+   - **Legacy mode** (when `<source>/post/` exists): falls back to the original 1-level group convention with CRC32-hex IDs and in-place front-matter rewrites. Kept so existing deployments keep booting.
 3. `src/main.go` — branches on `config.ExportDir`: empty → `server.Run()` (blocks via `gracehttp.Serve`); non-empty → `server.Export(...)` and exit.
 
 ### Request handlers (`src/server/server.go`)
@@ -44,7 +48,8 @@ Routes wired in `Server.newHandler()`:
 | `/search?query=...` | in-memory scoring (title 10, tag 5, body 1) |
 | `/atom.xml`, `/sitemap.xml`, `/robots.txt` | feed + SEO endpoints (see `src/server/feed.go`) |
 | `/healthz` | liveness probe, returns `ok` |
-| `/image/`, `/css/`, `/js/` | static passthrough; `safeServeFile` enforces both URL-prefix and filesystem-root containment so `/image/../../etc/passwd` is rejected |
+| `/css/`, `/js/` | static passthrough; `safeServeFile` enforces both URL-prefix and filesystem-root containment so `/css/../../etc/passwd` is rejected |
+| `/image/<rest>` | first tries `<source>/image/<rest>` (legacy) and falls back to `WikiIndex.ResolveImage(basename)` so attachments scattered through the vault can still be served |
 | `/bing_img` | proxies the Bing image-of-the-day API |
 
 When `[http].redirect_tls = true` and a TLS keypair is configured, the plain-HTTP server is swapped for a 301 redirector that points clients at the HTTPS listener. With it false (or TLS not configured), HTTP and HTTPS share the same handler.
@@ -53,31 +58,52 @@ When `[http].redirect_tls = true` and a TLS keypair is configured, the plain-HTT
 
 `mdRenderer` is a package-level `goldmark.Markdown` with `extension.GFM`, `html.WithXHTML()`, `html.WithUnsafe()` (raw HTML in posts is allowed because the post template uses `text/template`, not `html/template`).
 
-`renderArticleHTML` is the only place that calls `goldmark.Convert`. It checks `Article.CachedHTML()` first; on miss it renders, then `Article.StoreHTML()`s the result into a `sync/atomic.Value`. The cache is per-`*Article` and is cleared automatically by hot reload because `BlogST.Reload()` replaces the whole article pointer.
+`renderArticleHTML` is the only place that calls `goldmark.Convert`. Before invoking goldmark, the source bytes go through `expandWikilinks`, which rewrites Obsidian syntax against `blog.Blog.Wiki()`:
+
+- `[[Note Title]]` → `[Note Title](/post/...)`
+- `[[Note Title|display text]]` → `[display text](/post/...)`
+- `[[Note Title#section]]` → appends `#section` (slugified) to the resolved URL
+- `![[image.png]]` / `![[image.png|alt]]` → `<img src="/image/<rel-path>" alt="...">`
+- Unresolved `[[...]]` falls back to plain text (display value if provided, else the target name) — never a broken anchor.
+
+After rendering, the result is stored via `Article.StoreHTML()`. The cache is per-`*Article` and is cleared automatically by hot reload because `BlogST.Reload()` replaces the whole article pointer.
 
 Templates receive an `articleView` wrapper that embeds `*Article` and shadows the `Parse` field with a per-request value. **Don't reintroduce writes to `Article.Parse`** — concurrent requests on the same article would race. The wrapper also exposes `Canonical`, `Description`, `Domain` so theme templates can fill `<link rel="canonical">` and OG meta without reading `config.C` themselves.
 
+### Wiki index (`src/blog/blog.go`)
+
+`WikiIndex` is built during `Reload` and read by the renderer + image handler:
+
+- `notes` maps every plausible lookup key (lowercased basename, relative path, front-matter title) to the canonical URL. Multiple keys can resolve to the same article. `ResolveNote(target)` lowercases + strips `.md` and tries the full key first, then the basename so `[[Tech/Networking]]` and `[[Networking]]` both work.
+- `images` maps a lowercased filename to its disk path relative to `<source>`. The image handler uses this to serve attachments anywhere in the vault when a request comes in for `/image/<basename>`. The legacy `<source>/image/<rest>` path is still honored first.
+
+`NewWikiIndexForTesting(notes, images)` is exposed so tests can build a deterministic index without spinning up the scanner.
+
 ### Article model (`src/article/article.go`)
 
-`NewArticle` reads a Markdown file and parses YAML-ish front-matter delimited by `---` lines (FIXME in source: don't use `---` as a horizontal rule inside post bodies — use `***`). Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection. **All `Meta` fields must stay `string`-typed**: the same reflection loop is also used to rewrite the file in place, and it formats values as plain text. Multi-valued fields like `tags` are stored as a comma-separated `TagsRaw` string and split into `Tags []string` after the loop.
+Two constructors:
 
-If `Title`, `CreateTime`, `Id`, or `URL` are missing, defaults are filled in (`Id` is a CRC32 of body content) and **the source `.md` file is rewritten in place** with the populated front-matter. The rewriter `Truncate(0)`s before writing so it is safe across multiple runs. Be aware of this side effect when pointing the server at a content directory.
+- **`ParseFile(path)`** is the **read-only** path used by the vault scanner. It parses front-matter and body but never touches the file on disk. URLs / IDs / titles are derived by the caller from the disk path; the article model itself stays pristine.
+- **`NewArticle(path, type, fatherURL)`** is the legacy constructor that mirrors the original gobog behavior: parses, fills missing meta defaults (`Id` = CRC32 of body), and **rewrites the source `.md` in place** to persist them. Only used when `<source>/post/` exists (legacy layout).
 
-`Article` also computes `WordCount`, `ReadingTimeMin` (250 wpm), and a `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes). `IsDraft()` reads `Draft` (truthy values: `true`/`1`/`yes`); drafts are filtered out by `BlogST.Reload()` unless `[blog].include_drafts = true`.
+Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection. **All `Meta` fields must stay `string`-typed** because the reflective rewriter formats values as plain text. The parser strips `[ ]` from `tags:` so Obsidian's YAML-array form (`tags: [a, b]`) decodes into the same `TagsRaw` as the comma-separated form. Tags are also accepted with a leading `#`.
+
+`Article` derives `WordCount`, `ReadingTimeMin` (250 wpm), `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes), and exposes a lazy `CachedHTML/StoreHTML` pair backed by `sync/atomic.Value` for goroutine-safe caching. `IsDraft()` reads `Draft` (truthy: `true`/`1`/`yes`).
+
+`Slugify(s)` returns a kebab-case ASCII slug; `SlugOrHash(s)` falls back to a stable CRC32 hex when the slug is empty (e.g. CJK-only titles), so URLs are always addressable.
 
 `Articles` (slice) sort: groups (those with `SubArticle != nil`) first, then leaf articles by `CreateTime` descending using layout `2006-01-02 15:04:05`.
 
 ## Static export (`src/server/export.go`)
 
-`server.Export(outDir)` walks `blog.Blog` and writes:
+`server.Export(outDir)` walks `blog.Blog` recursively (any depth) and writes:
 
 ```
 outDir/
 ├── index.html
 ├── about/index.html
-├── post/<id>/index.html              (leaf post)
-├── post/<id>/index.html              (group landing — sub-list rendered with index.html)
-├── post/<id>/<sub>/index.html        (sub post)
+├── post/<slug-path>/index.html       (every leaf at any depth)
+├── post/<slug-path>/index.html       (group landing — sub-list rendered with index.html)
 ├── tag/<tag>/index.html
 ├── 404.html                          (rendered via the same notFound handler)
 ├── atom.xml                          (built by buildAtomFeed)
@@ -86,10 +112,12 @@ outDir/
 ├── CNAME                             (from [blog].cname, if non-empty)
 ├── css/                              (copied from theme)
 ├── js/                               (copied from theme)
-└── image/                            (copied from <source>/image)
+└── image/<rel-path>                  (every non-.md file in <source>, preserving its layout)
 ```
 
-This layout is drop-in compatible with `sbraveyoung/sbraveyoung.github.io`. `urlToFile(outDir, url)` is the canonical URL → filesystem mapping (covered by `export_test.go`). The legacy `script/export.sh` is kept for reference but the Go subcommand is the supported path: it doesn't need a running server, respects `include_drafts`, and writes the SEO siblings (`atom.xml`, `sitemap.xml`, `robots.txt`).
+`exportPosts` is recursive, so vault folders nested 3+ levels deep all get a directory + landing page in the output. Asset copying covers both legacy `<source>/image/` and arbitrary attachment paths in the vault (the latter walked from `<source>` and copied to `<outDir>/image/<rel-path>`, matching the URLs the renderer emits).
+
+`urlToFile(outDir, url)` is the canonical URL → filesystem mapping (covered by `export_test.go`). The legacy `script/export.sh` is kept for reference but the Go subcommand is the supported path: it doesn't need a running server, respects `include_drafts`, and writes the SEO siblings (`atom.xml`, `sitemap.xml`, `robots.txt`).
 
 ## Configuration
 

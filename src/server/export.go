@@ -104,33 +104,36 @@ func exportAbout(outDir string) error {
 }
 
 func exportPosts(outDir string) error {
-	for _, top := range blog.Blog.Groups() {
-		if len(top.SubArticle) == 0 {
-			if err := exportLeaf(outDir, top); err != nil {
-				return err
-			}
-			continue
-		}
-		// Group landing: render the group's sub-list using index.html so the
-		// inner page mirrors what postHandler returns for the group URL.
-		t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
-		if err != nil {
-			return err
-		}
-		var buf bytes.Buffer
-		if err := t.Execute(&buf, top.SubArticle); err != nil {
-			return err
-		}
-		if err := writeFile(urlToFile(outDir, top.URL), buf.Bytes()); err != nil {
-			return err
-		}
-		for _, sub := range top.SubArticle {
-			if err := exportLeaf(outDir, sub); err != nil {
-				return err
-			}
-		}
+	groupTpl, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	if err != nil {
+		return err
 	}
-	return nil
+	var walk func(articlepkg.Articles) error
+	walk = func(list articlepkg.Articles) error {
+		for _, a := range list {
+			if len(a.SubArticle) == 0 {
+				if err := exportLeaf(outDir, a); err != nil {
+					return err
+				}
+				continue
+			}
+			// Group landing: render the group's sub-list using index.html so
+			// the directory page mirrors what postHandler returns for the
+			// group URL.
+			var buf bytes.Buffer
+			if err := groupTpl.Execute(&buf, a.SubArticle); err != nil {
+				return err
+			}
+			if err := writeFile(urlToFile(outDir, a.URL), buf.Bytes()); err != nil {
+				return err
+			}
+			if err := walk(a.SubArticle); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(blog.Blog.Groups())
 }
 
 func exportLeaf(outDir string, a *articlepkg.Article) error {
@@ -232,22 +235,55 @@ func writeFile(path string, data []byte) error {
 }
 
 func copyAssets(outDir string) error {
-	pairs := []struct{ src, dst string }{
-		{filepath.Join(config.C.Blog.Theme, "css"), filepath.Join(outDir, "css")},
-		{filepath.Join(config.C.Blog.Theme, "js"), filepath.Join(outDir, "js")},
-		{filepath.Join(config.C.Blog.Source, "image"), filepath.Join(outDir, "image")},
-	}
-	for _, p := range pairs {
-		if _, err := os.Stat(p.src); os.IsNotExist(err) {
+	// Theme assets (CSS/JS): straight directory copy.
+	for _, sub := range []string{"css", "js"} {
+		src := filepath.Join(config.C.Blog.Theme, sub)
+		if _, err := os.Stat(src); os.IsNotExist(err) {
 			continue
 		} else if err != nil {
 			return err
 		}
-		if err := copyTree(p.src, p.dst); err != nil {
-			return fmt.Errorf("copy %s: %w", p.src, err)
+		if err := copyTree(src, filepath.Join(outDir, sub)); err != nil {
+			return fmt.Errorf("copy %s: %w", src, err)
 		}
 	}
-	return nil
+
+	// Legacy <source>/image/ keeps working as before.
+	legacyImg := filepath.Join(config.C.Blog.Source, "image")
+	if fi, err := os.Stat(legacyImg); err == nil && fi.IsDir() {
+		if err := copyTree(legacyImg, filepath.Join(outDir, "image")); err != nil {
+			return fmt.Errorf("copy %s: %w", legacyImg, err)
+		}
+	}
+
+	// Vault mode: every non-.md file referenced by the image index gets
+	// copied to <outDir>/image/<rel-path>, preserving its layout so URLs
+	// like /image/Tech/Networking/diagram.png stay valid offline.
+	source := config.C.Blog.Source
+	return filepath.Walk(source, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if strings.HasPrefix(info.Name(), ".") && p != source {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := info.Name()
+		if strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
+			return nil
+		}
+		rel, err := filepath.Rel(source, p)
+		if err != nil {
+			return nil
+		}
+		// Don't double-copy the legacy <source>/image/ tree.
+		if strings.HasPrefix(filepath.ToSlash(rel), "image/") {
+			return nil
+		}
+		return copyFile(p, filepath.Join(outDir, "image", rel))
+	})
 }
 
 func copyTree(src, dst string) error {
