@@ -27,6 +27,7 @@ var server = &Server{}
 // Run is the entrypoint for the HTTP servers. It blocks. Used by main.go when
 // not running in static-export mode.
 func Run() error {
+	initViewStore()
 	servers := []*http.Server{}
 
 	// Plain HTTP: redirect to HTTPS when TLS is configured and the operator
@@ -97,6 +98,8 @@ func (s *Server) newHandler() http.Handler {
 	mux.HandleFunc("/css/", logMiddle(cssHandler))
 	mux.HandleFunc("/js/", logMiddle(jsHandler))
 	mux.HandleFunc("/bing_img", logMiddle(bingImgHandler))
+	mux.HandleFunc("/snippet", logMiddle(snippetHandler))
+	mux.HandleFunc("/snippet/", logMiddle(snippetHandler))
 	return mux
 }
 
@@ -125,39 +128,44 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.URL.Path
-	groups := blog.Blog.Groups()
-
-	var matched *articlepkg.Article
-	for _, g := range groups {
-		if !strings.HasPrefix(urlPath, g.URL) {
-			continue
-		}
-		matched = g
-		// If the URL points deeper than the group, walk into sub-articles.
-		if urlPath != g.URL && len(g.SubArticle) > 0 {
-			for _, sub := range g.SubArticle {
-				if urlPath == sub.URL {
-					matched = sub
-					break
-				}
-			}
-		}
-		break
-	}
-
+	matched := findArticle(blog.Blog.Groups(), urlPath)
 	if matched == nil {
 		notFound(w, r)
 		return
 	}
-
 	if len(matched.SubArticle) == 0 {
-		renderPost(w, matched)
+		renderPost(w, r, matched)
 	} else {
 		renderGroup(w, matched.SubArticle)
 	}
 }
 
-func renderPost(w http.ResponseWriter, article *articlepkg.Article) {
+// findArticle walks the article tree (any depth) looking for an exact URL
+// match. Returns nil when no article owns urlPath — the original
+// implementation accidentally fell back to the deepest matching group,
+// which made unknown deep URLs render that group's listing instead of 404.
+func findArticle(list articlepkg.Articles, urlPath string) *articlepkg.Article {
+	for _, a := range list {
+		if a.URL == urlPath {
+			return a
+		}
+		if len(a.SubArticle) > 0 && strings.HasPrefix(urlPath, a.URL+"/") {
+			if hit := findArticle(a.SubArticle, urlPath); hit != nil {
+				return hit
+			}
+		}
+	}
+	return nil
+}
+
+func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Article) {
+	// Private articles gate the body behind HTTP Basic auth, but only if
+	// auth is configured. Without [auth], private notes are inaccessible
+	// (503) rather than silently public.
+	if article.IsPrivate() && !requireAuth(w, r) {
+		return
+	}
+
 	parse, err := renderArticleHTML(article)
 	if err != nil {
 		logs.Warn("render markdown:", err)
@@ -169,6 +177,9 @@ func renderPost(w http.ResponseWriter, article *articlepkg.Article) {
 		logs.Warn("parse post template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+	if views != nil {
+		views.Increment(article.URL)
 	}
 	view := newArticleView(article, parse, config.C.Blog.Domain)
 	if err := t.Execute(w, view); err != nil {
@@ -194,7 +205,7 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 		notFound(w, r)
 		return
 	}
-	renderPost(w, list[0])
+	renderPost(w, r, list[0])
 }
 
 func tagHandler(w http.ResponseWriter, r *http.Request) {

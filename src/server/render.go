@@ -143,6 +143,10 @@ func escapeMD(s string) string {
 // articleView wraps an article for template rendering. Embedding lets
 // templates keep using {{.Title}}, {{.URL}}, etc. while we shadow Parse with
 // a per-request value (avoids racing on Article.Parse across goroutines).
+//
+// New fields (ViewCount / Pinned / Private) are exposed so theme templates
+// can decorate listings ("📌 pinned", "🔒 private", "👀 12 views") without
+// touching package globals.
 type articleView struct {
 	*articlepkg.Article
 	Parse       string
@@ -150,12 +154,19 @@ type articleView struct {
 	Canonical   string
 	SiteTitle   string
 	Description string
+	ViewCount   int64
+	Pinned      bool
+	Private     bool
 }
 
 func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 	desc := a.Summary
 	if desc == "" {
 		desc = a.Description
+	}
+	var n int64
+	if views != nil {
+		n = views.Get(a.URL)
 	}
 	return articleView{
 		Article:     a,
@@ -164,5 +175,8 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 		Canonical:   domain + a.URL,
 		SiteTitle:   a.Title,
 		Description: desc,
+		ViewCount:   n,
+		Pinned:      a.IsPinned(),
+		Private:     a.IsPrivate(),
 	}
 }

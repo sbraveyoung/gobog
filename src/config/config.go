@@ -52,13 +52,34 @@ type BlogConfig struct {
 	Source         string
 	CNAME          string
 	IncludeDrafts  bool   `toml:"include_drafts"`
+	IncludeHidden  bool   `toml:"include_hidden"`
 	GoogleAnalytic string `toml:"google_analytic"`
+}
+
+// AuthConfig gates private articles and snippet creation. Username is the
+// HTTP Basic auth user; PasswordHash is a hex sha256 of the password.
+// When either is empty, auth is disabled and any /private content / snippet
+// POST returns 503.
+type AuthConfig struct {
+	Username     string `toml:"username"`
+	PasswordHash string `toml:"password_hash"`
+	// Realm shown in the WWW-Authenticate header. Optional.
+	Realm string `toml:"realm"`
+}
+
+// DataConfig points at a directory where the server keeps mutable state
+// (view counts, snippets). Defaults to "./gobog-data" (working dir-relative)
+// so the user's vault stays untouched.
+type DataConfig struct {
+	Dir string `toml:"dir"`
 }
 
 type Config struct {
 	Blog BlogConfig
 	Http HttpConfig
 	Log  LogConfig
+	Auth AuthConfig
+	Data DataConfig
 }
 
 func init() {

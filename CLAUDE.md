@@ -46,11 +46,14 @@ Routes wired in `Server.newHandler()`:
 | `/about` | first article from the `about` list, rendered through `post.html` |
 | `/tag/` and `/tag/<name>` | tag index and per-tag listing (uses the precomputed `byTag` map) |
 | `/search?query=...` | in-memory scoring (title 10, tag 5, body 1) |
-| `/atom.xml`, `/sitemap.xml`, `/robots.txt` | feed + SEO endpoints (see `src/server/feed.go`) |
+| `/atom.xml`, `/sitemap.xml`, `/robots.txt` | feed + SEO endpoints (see `src/server/feed.go`); private posts are filtered out |
 | `/healthz` | liveness probe, returns `ok` |
+| `/snippet`, `/snippet/<id>` | gist-style snippet sharing — POST creates (auth required), GET shows; rendered through the same goldmark pipeline as posts |
 | `/css/`, `/js/` | static passthrough; `safeServeFile` enforces both URL-prefix and filesystem-root containment so `/css/../../etc/passwd` is rejected |
 | `/image/<rest>` | first tries `<source>/image/<rest>` (legacy) and falls back to `WikiIndex.ResolveImage(basename)` so attachments scattered through the vault can still be served |
 | `/bing_img` | proxies the Bing image-of-the-day API |
+
+`postHandler` now does an exact-URL walk via `findArticle`. The original implementation's prefix-then-fallback would render the deepest matching group when an unknown URL fell under it — clean 404 instead.
 
 When `[http].redirect_tls = true` and a TLS keypair is configured, the plain-HTTP server is swapped for a 301 redirector that points clients at the HTTPS listener. With it false (or TLS not configured), HTTP and HTTPS share the same handler.
 
@@ -88,7 +91,14 @@ Two constructors:
 
 Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection. **All `Meta` fields must stay `string`-typed** because the reflective rewriter formats values as plain text. The parser strips `[ ]` from `tags:` so Obsidian's YAML-array form (`tags: [a, b]`) decodes into the same `TagsRaw` as the comma-separated form. Tags are also accepted with a leading `#`.
 
-`Article` derives `WordCount`, `ReadingTimeMin` (250 wpm), `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes), and exposes a lazy `CachedHTML/StoreHTML` pair backed by `sync/atomic.Value` for goroutine-safe caching. `IsDraft()` reads `Draft` (truthy: `true`/`1`/`yes`).
+`Article` derives `WordCount`, `ReadingTimeMin` (250 wpm), `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes), and exposes a lazy `CachedHTML/StoreHTML` pair backed by `sync/atomic.Value` for goroutine-safe caching.
+
+The visibility quartet is governed by a shared `truthy` helper (case-insensitive `true` / `1` / `yes` / `on`):
+
+- `IsDraft()` — work-in-progress; excluded from listings unless `[blog].include_drafts`.
+- `IsHidden()` — temporarily off; excluded from listings unless `[blog].include_hidden`. Mechanically the same as Draft today; the distinction is purely semantic for the author.
+- `IsPrivate()` — listed in indexes but the body is gated by HTTP Basic auth (see `[auth]`). Filtered out of `atom.xml`, `sitemap.xml`, and the static export entirely (no auth on a static host).
+- `IsPinned()` — sticks the article to the top of its containing listing, overriding the usual create_time descending order. The `Articles` sort considers the pinned bit before the date.
 
 `Slugify(s)` returns a kebab-case ASCII slug; `SlugOrHash(s)` falls back to a stable CRC32 hex when the slug is empty (e.g. CJK-only titles), so URLs are always addressable.
 
@@ -123,8 +133,10 @@ outDir/
 
 `conf/config.toml` keys actually consumed:
 
-- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`.
+- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`.
 - `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`.
+- `[auth]`: `username`, `password_hash` (hex sha256 of the plaintext password — generate via `printf 'pw' | sha256sum`), `realm`. When either field is empty, every auth-gated endpoint returns 503 (so private posts and snippet POSTs fail closed).
+- `[data]`: `dir` — where the server keeps mutable state (`views.json` for the view counter, `snippets/` for shared snippets). Defaults to `./gobog-data`. Static export ignores this.
 - `[log]`: passthrough to beego's logger (currently unwired).
 
 The Dockerfile uses `sed` to substitute `${YOUR_CERT_PATH}`, `${YOUR_SOURCE_PATH}`, and `${IMAGE_PATH}` placeholders at build time — keep those placeholder strings in sync between `conf/config.toml`, `script/export.sh`, and `dockerfile` if you rename them.
@@ -135,7 +147,15 @@ The blog content directory (`[blog].source`) is expected to contain subdirectori
 
 Unit tests live next to their packages:
 
-- `src/article/article_test.go` covers front-matter parsing, in-place rewrite stability, tag splitting, CJK + ASCII word counting, sort order, summary extraction, draft detection, and the lazy HTML cache.
-- `src/server/export_test.go`, `src/server/safefs_test.go` cover the URL → filesystem mapping and the path-traversal guard.
+- `src/article/article_test.go` — front-matter parsing, in-place rewrite stability, tag splitting, CJK + ASCII word counting, sort order (groups first, pinned next, then date desc), summary extraction, the visibility quartet (draft/hidden/private/pin), and the lazy HTML cache.
+- `src/blog/blog_test.go` — Reload against an Obsidian-style fixture (vault layout, 3-level nesting, .obsidian skipped, image index by basename) and a legacy-layout fixture.
+- `src/server/render_test.go` — `expandWikilinks` covering wikilinks, display text, fragments, path-style targets, missing notes, image embeds with and without alt text, unresolved images.
+- `src/server/auth_test.go` — `requireAuth` decision matrix: missing config (503), missing creds (401 + WWW-Authenticate), wrong user, wrong password, valid creds (200). Plus `hashPassword` determinism + length.
+- `src/server/views_test.go` — counter increment, persistence round-trip via temp-file rename, idempotent flush on clean state, concurrent increments under `-race`.
+- `src/server/snippets_test.go` — POST without auth (401), POST with auth (200 + JSON), GET round-trip, bad-id 404, bad-id rejection of `..`/spaces, GET form for the empty path.
+- `src/server/export_test.go` — `urlToFile` mapping, `withoutPrivate` recursive filter (drops private leaves AND empty-after-filter groups so the exported tree never links to a 404).
+- `src/server/safefs_test.go` — `safeServeFile` rejects `/image/../../etc/passwd`-style traversal.
 
 The test binary detects itself via `os.Args[0]` ending in `.test` and short-circuits `config.init()` (no flag parsing, no TOML read) and `blog.init()` (no disk scan, no fsnotify). Tests that need state should set `config.C` directly and call `blog.Blog.SetForTesting`.
+
+Run with the race detector — `views.go` uses lock-free atomics on a `sync.Map` and the post handler / view counter / wiki index are exercised concurrently in production. `go test -race ./src/...` is the supported gate.

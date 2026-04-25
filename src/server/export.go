@@ -81,7 +81,7 @@ func exportIndex(outDir string) error {
 		return fmt.Errorf("parse index template: %w", err)
 	}
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, blog.Blog.Groups()); err != nil {
+	if err := t.Execute(&buf, withoutPrivate(blog.Blog.Groups())); err != nil {
 		return fmt.Errorf("exec index template: %w", err)
 	}
 	return writeFile(filepath.Join(outDir, "index.html"), buf.Bytes())
@@ -111,17 +111,28 @@ func exportPosts(outDir string) error {
 	var walk func(articlepkg.Articles) error
 	walk = func(list articlepkg.Articles) error {
 		for _, a := range list {
+			// Private articles can't enforce auth on a static host, so they
+			// drop out of the export entirely. Their URL keeps resolving in
+			// server mode (where the auth gate works).
+			if a.IsPrivate() {
+				continue
+			}
 			if len(a.SubArticle) == 0 {
 				if err := exportLeaf(outDir, a); err != nil {
 					return err
 				}
 				continue
 			}
-			// Group landing: render the group's sub-list using index.html so
-			// the directory page mirrors what postHandler returns for the
-			// group URL.
+			// Group landing: feed the template a list with private subs
+			// stripped so the rendered page never links to a 404. If the
+			// filter empties the group entirely, skip rendering — the
+			// parent already dropped the link via withoutPrivate.
+			subs := withoutPrivate(a.SubArticle)
+			if len(subs) == 0 {
+				continue
+			}
 			var buf bytes.Buffer
-			if err := groupTpl.Execute(&buf, a.SubArticle); err != nil {
+			if err := groupTpl.Execute(&buf, subs); err != nil {
 				return err
 			}
 			if err := writeFile(urlToFile(outDir, a.URL), buf.Bytes()); err != nil {
@@ -134,6 +145,29 @@ func exportPosts(outDir string) error {
 		return nil
 	}
 	return walk(blog.Blog.Groups())
+}
+
+// withoutPrivate returns a shallow copy of list with private articles
+// removed, recursing into groups so a group whose subs are all private
+// drops out entirely. Used by export so the rendered tree never contains a
+// link to a path that the export skipped.
+func withoutPrivate(list articlepkg.Articles) articlepkg.Articles {
+	out := make(articlepkg.Articles, 0, len(list))
+	for _, a := range list {
+		if a.IsPrivate() {
+			continue
+		}
+		if len(a.SubArticle) > 0 {
+			subs := withoutPrivate(a.SubArticle)
+			if len(subs) == 0 {
+				// Empty group after filtering — skip altogether so the
+				// parent listing doesn't link to a 404.
+				continue
+			}
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 func exportLeaf(outDir string, a *articlepkg.Article) error {
@@ -158,8 +192,12 @@ func exportTags(outDir string) error {
 		return err
 	}
 	for _, tag := range tags {
+		filtered := withoutPrivate(blog.Blog.PostsByTag(tag))
+		if len(filtered) == 0 {
+			continue
+		}
 		var buf bytes.Buffer
-		if err := t.Execute(&buf, blog.Blog.PostsByTag(tag)); err != nil {
+		if err := t.Execute(&buf, filtered); err != nil {
 			return err
 		}
 		if err := writeFile(filepath.Join(outDir, "tag", tag, "index.html"), buf.Bytes()); err != nil {

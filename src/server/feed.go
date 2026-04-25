@@ -86,6 +86,12 @@ func buildAtomFeed() atomFeed {
 	}
 
 	for _, a := range posts {
+		if a.IsPrivate() {
+			// Private articles never reach the feed — subscribers shouldn't
+			// see titles + summaries that the site itself hides behind
+			// auth.
+			continue
+		}
 		t, err := time.Parse(articlepkg.TIME_LAYOUT, a.CreateTime)
 		if err != nil {
 			t = time.Now()
@@ -135,6 +141,9 @@ func buildSitemap() sitemapSet {
 	domain := strings.TrimRight(config.C.Blog.Domain, "/")
 	urls := []sitemapURL{{Loc: domain + "/"}, {Loc: domain + "/about"}}
 	for _, a := range blog.Blog.AllPosts() {
+		if a.IsPrivate() {
+			continue
+		}
 		var lastmod string
 		if t, err := time.Parse(articlepkg.TIME_LAYOUT, a.CreateTime); err == nil {
 			lastmod = t.UTC().Format("2006-01-02")

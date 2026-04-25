@@ -151,6 +151,90 @@ func TestArticlesSortingGroupsFirstThenDateDesc(t *testing.T) {
 	}
 }
 
+func TestArticlesSortingPinnedAboveDateOrder(t *testing.T) {
+	newer := &Article{}
+	newer.Title = "newer"
+	newer.CreateTime = "2026-04-25 10:00:00"
+	older := &Article{}
+	older.Title = "older"
+	older.CreateTime = "2026-04-20 10:00:00"
+	pinned := &Article{}
+	pinned.Title = "pinned"
+	pinned.CreateTime = "2026-04-10 10:00:00"
+	pinned.Pin = "true"
+
+	list := Articles{newer, older, pinned}
+	sort.Sort(list)
+
+	if list[0] != pinned {
+		t.Fatalf("pinned should be first regardless of date, got order: %v", titlesOf(list))
+	}
+	if list[1] != newer || list[2] != older {
+		t.Errorf("non-pinned should still sort by date desc, got: %v", titlesOf(list))
+	}
+}
+
+func TestArticlesSortingMultiplePinned(t *testing.T) {
+	pinNew := &Article{}
+	pinNew.Title = "pin-new"
+	pinNew.Pin = "yes"
+	pinNew.CreateTime = "2026-04-25 10:00:00"
+	pinOld := &Article{}
+	pinOld.Title = "pin-old"
+	pinOld.Pin = "1"
+	pinOld.CreateTime = "2026-01-01 10:00:00"
+	leaf := &Article{}
+	leaf.Title = "regular"
+	leaf.CreateTime = "2026-04-26 10:00:00"
+
+	list := Articles{leaf, pinOld, pinNew}
+	sort.Sort(list)
+
+	if list[0].Title != "pin-new" || list[1].Title != "pin-old" {
+		t.Errorf("among pinned, newer should win, got: %v", titlesOf(list))
+	}
+	if list[2] != leaf {
+		t.Errorf("regular post should sort last among these, got: %v", titlesOf(list))
+	}
+}
+
+func titlesOf(a Articles) []string {
+	out := make([]string, len(a))
+	for i, x := range a {
+		out[i] = x.Title
+	}
+	return out
+}
+
+func TestVisibilityFlags(t *testing.T) {
+	cases := []struct {
+		raw                       string
+		draft, hidden, priv, pin  bool
+		setter                    func(*Article, string)
+		check                     func(*Article) bool
+		name                      string
+	}{
+		{"true", true, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=true"},
+		{"True", true, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=True"},
+		{"YES", true, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=YES"},
+		{"on", true, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=on"},
+		{"false", false, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=false"},
+		{"", false, false, false, false, func(a *Article, v string) { a.Draft = v }, (*Article).IsDraft, "draft=empty"},
+		{"true", false, true, false, false, func(a *Article, v string) { a.Hidden = v }, (*Article).IsHidden, "hidden=true"},
+		{"yes", false, false, true, false, func(a *Article, v string) { a.Private = v }, (*Article).IsPrivate, "private=yes"},
+		{"1", false, false, false, true, func(a *Article, v string) { a.Pin = v }, (*Article).IsPinned, "pin=1"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := &Article{}
+			c.setter(a, c.raw)
+			if got := c.check(a); got != (c.draft || c.hidden || c.priv || c.pin) {
+				t.Errorf("%s: check returned %v", c.name, got)
+			}
+		})
+	}
+}
+
 func titles(a Articles) []string {
 	out := make([]string, len(a))
 	for i, x := range a {

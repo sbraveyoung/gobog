@@ -30,3 +30,22 @@ source="${YOUR_SOURCE_PATH}"
 cname="sbrave.cn"
 # Optional: include articles whose front-matter has `draft: true`.
 include_drafts=false
+# Optional: include articles whose front-matter has `hidden: true`. Hidden is
+# semantically distinct from draft (temporarily off vs. work in progress) but
+# behaves the same way: dropped from listings + sitemap + atom unless this
+# flag is on.
+include_hidden=false
+
+# Auth gates two things: viewing notes that have `private: true` in their
+# front-matter, and creating new code snippets via POST /snippet. When either
+# field below is empty, both endpoints fail closed with 503. Generate the
+# hash with: printf 'your-password' | sha256sum
+[auth]
+username=""
+password_hash=""
+realm="gobog"
+
+# Mutable server state (view counts, shared snippets) lives here. Defaults to
+# ./gobog-data when blank. Static export does not use this directory.
+[data]
+dir="./gobog-data"

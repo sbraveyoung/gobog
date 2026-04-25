@@ -45,6 +45,17 @@ type Meta struct {
 	Id            string `meta:"id"`
 	URL           string `meta:"url"`
 	Draft         string `meta:"draft"`
+	// Pin sticks an article to the top of its containing listing,
+	// overriding the usual create_time descending order.
+	Pin string `meta:"pin"`
+	// Private articles still appear in indexes but their body is gated
+	// by HTTP Basic auth (see config [auth]). Lists show title + URL,
+	// no Summary leak.
+	Private string `meta:"private"`
+	// Hidden articles are dropped from listings entirely (like Draft) but
+	// the URL keeps resolving — useful for "temporarily off" rather than
+	// "work in progress". Toggle via [blog].include_hidden.
+	Hidden        string `meta:"hidden"`
 	TyporaRootURL string `meta:"typora-root-url"`
 }
 
@@ -71,23 +82,46 @@ func (a *Article) CachedHTML() (string, bool) {
 
 func (a *Article) StoreHTML(html string) { a.parsedHTML.Store(html) }
 
-func (a *Article) IsDraft() bool {
-	d := strings.ToLower(strings.TrimSpace(a.Draft))
-	return d == "true" || d == "1" || d == "yes"
-}
+// IsDraft reports whether front-matter marks this article as a draft.
+func (a *Article) IsDraft() bool { return truthy(a.Draft) }
+
+// IsPinned sticks the article to the top of its containing listing,
+// overriding create_time order.
+func (a *Article) IsPinned() bool { return truthy(a.Pin) }
+
+// IsPrivate gates the article body behind HTTP Basic auth.
+func (a *Article) IsPrivate() bool { return truthy(a.Private) }
+
+// IsHidden drops the article from listings entirely (URL keeps resolving).
+func (a *Article) IsHidden() bool { return truthy(a.Hidden) }
 
 func (a *Article) IsGroup() bool { return len(a.SubArticle) > 0 }
+
+// truthy interprets common YAML-ish booleans (true / 1 / yes / on, any case)
+// as true; everything else (including empty) is false.
+func truthy(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes", "on":
+		return true
+	}
+	return false
+}
 
 type Articles []*Article
 
 func (a Articles) Len() int      { return len(a) }
 func (a Articles) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a Articles) Less(i, j int) bool {
+	// Groups (directories) before leaves so navigation stays stable.
 	if a[i].SubArticle == nil && a[j].SubArticle != nil {
 		return false
 	}
 	if a[i].SubArticle != nil && a[j].SubArticle == nil {
 		return true
+	}
+	// Pinned articles bubble to the top within the same kind.
+	if a[i].IsPinned() != a[j].IsPinned() {
+		return a[i].IsPinned()
 	}
 	ti, erri := time.Parse(TIME_LAYOUT, a[i].CreateTime)
 	tj, errj := time.Parse(TIME_LAYOUT, a[j].CreateTime)

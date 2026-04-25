@@ -292,6 +292,9 @@ func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Art
 	if a.IsDraft() && !config.C.Blog.IncludeDrafts {
 		return nil, nil
 	}
+	if a.IsHidden() && !config.C.Blog.IncludeHidden {
+		return nil, nil
+	}
 	rel, err := filepath.Rel(sourceRoot, path)
 	if err != nil {
 		return nil, err
@@ -378,6 +381,9 @@ func loadLegacyPosts(rootPath string) (articlepkg.Articles, error) {
 			if art.IsDraft() && !config.C.Blog.IncludeDrafts {
 				continue
 			}
+			if art.IsHidden() && !config.C.Blog.IncludeHidden {
+				continue
+			}
 			list = append(list, art)
 		}
 	}
@@ -409,6 +415,9 @@ func loadLegacyGroup(group *articlepkg.Article, dir string) error {
 			continue
 		}
 		if sub.IsDraft() && !config.C.Blog.IncludeDrafts {
+			continue
+		}
+		if sub.IsHidden() && !config.C.Blog.IncludeHidden {
 			continue
 		}
 		group.SubArticle = append(group.SubArticle, sub)
