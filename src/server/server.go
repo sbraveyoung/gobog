@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"html/template"
@@ -16,16 +17,33 @@ import (
 	httpc "github.com/SmartBrave/utils/easyhttpclient"
 	"github.com/astaxie/beego/logs"
 	"github.com/facebookarchive/grace/gracehttp"
-	"github.com/russross/blackfriday"
-	//"github.com/SmartBrave/gobog/src/markdown"
-	//"github.com/golang-commonmark/markdown"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 type Server struct{}
 
 var (
 	server *Server
+
+	mdRenderer = goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithRendererOptions(
+			html.WithXHTML(),
+			html.WithUnsafe(),
+		),
+	)
 )
+
+func renderArticle(article *articlepkg.Article) (string, error) {
+	src := append([]byte("## "+article.Title+"\n"), article.Content...)
+	var buf bytes.Buffer
+	if err := mdRenderer.Convert(src, &buf); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
 
 func init() {
 	servers := []*http.Server{}
@@ -121,9 +139,13 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(article.SubArticle) == 0 {
-		//tmp := blackfriday.MarkdownBasic(append([]byte("## "+a[0].Title+"\n"), a[0].Content...))
-		tmp := blackfriday.Markdown(append([]byte("## "+article.Title+"\n"), article.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE|blackfriday.EXTENSION_TABLES)
-		article.Parse = string(tmp)
+		parsed, err := renderArticle(article)
+		if err != nil {
+			logs.Warn("renderArticle err: ", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		article.Parse = parsed
 		t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
 		if err != nil {
 			logs.Warn("t.ParseFiles occur some err: ", err)
@@ -158,8 +180,13 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	article := blog.Blog.Articles[blog.BlogTypes["about"]][0]
-	tmp := blackfriday.Markdown(append([]byte("## "+article.Title+"\n"), article.Content...), blackfriday.HtmlRenderer(0|blackfriday.HTML_USE_XHTML, "", ""), blackfriday.EXTENSION_FENCED_CODE)
-	article.Parse = string(tmp)
+	parsed, err := renderArticle(article)
+	if err != nil {
+		logs.Warn("renderArticle err: ", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	article.Parse = parsed
 	t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
 	if err != nil {
 		logs.Warn("t.ParseFiles occur some err: ", err)

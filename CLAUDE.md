@@ -17,7 +17,7 @@ go run src/main.go  # run directly; uses ./conf/config.toml by default
 ./gobog -config /path/to/config.toml   # override config path
 ```
 
-There is no test suite wired up. The only test file (`src/markdown/markdown_test.go.bak`) is disabled via the `.bak` extension along with `markdown.go.bak` — the `src/markdown` package is intentionally not built. If you re-enable it, restore both files together; `server.go` references it only in commented imports.
+There is no test suite wired up.
 
 Binding `:80` / `:443` (defaults in `conf/config.toml`) requires root or `setcap`. For local dev, edit `[http].addr`/`addrs` and provide cert paths, or comment out the TLS server in `src/server/server.go`.
 
@@ -41,7 +41,7 @@ Routes are wired in `Server.newHandler()`:
 - `/image/`, `/css/`, `/js/` → static file passthrough rooted at `config.C.Blog.Source` (images) or `config.C.Blog.Theme` (assets).
 - `/bing_img` → proxies the Bing image-of-the-day API.
 
-Markdown is rendered on each request via `blackfriday.Markdown(...)` with `EXTENSION_FENCED_CODE` (and `EXTENSION_TABLES` for posts). The article title is prepended as `## <title>` before rendering. Results are cached on the `Article.Parse` field but the entire article slice is shared across goroutines without locking — be careful introducing mutation.
+Markdown is rendered on each request via the package-level `mdRenderer` in `src/server/server.go` — a `goldmark.Markdown` configured with `extension.GFM` (tables, strikethrough, autolinks, task lists), `html.WithXHTML()`, and `html.WithUnsafe()` (raw HTML in posts is intentionally allowed because the post template uses `text/template`, not `html/template`). The shared `renderArticle` helper prepends `## <title>` before rendering. Results are stored back on `Article.Parse` but the entire article slice is shared across goroutines without locking, and the field is rewritten on every request — be careful introducing mutation, and prefer fixing the cache/race together rather than piling on more shared writes.
 
 ### Article model (`src/article/article.go`)
 
