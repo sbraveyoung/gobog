@@ -5,12 +5,22 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 var (
 	C Config
+
+	// ExportDir, when non-empty, switches gobog into static export mode:
+	// the binary renders the entire site into ExportDir and exits without
+	// starting the HTTP servers. Set via the -export flag.
+	ExportDir string
+
+	// Testing is true when running under `go test`. Production code paths in
+	// dependent packages can use this to skip filesystem-dependent init.
+	Testing bool
 )
 
 type LogConfig struct {
@@ -25,20 +35,24 @@ type LogConfig struct {
 }
 
 type HttpConfig struct {
-	Addr  string
-	Addrs string
-	Cert  string
-	Key   string
+	Addr        string
+	Addrs       string
+	Cert        string
+	Key         string
+	RedirectTLS bool `toml:"redirect_tls"`
 }
 
 type BlogConfig struct {
-	Domain      string
-	Title       string
-	Subtitle    string
-	Description string
-	Author      string
-	Theme       string
-	Source      string
+	Domain         string
+	Title          string
+	Subtitle       string
+	Description    string
+	Author         string
+	Theme          string
+	Source         string
+	CNAME          string
+	IncludeDrafts  bool   `toml:"include_drafts"`
+	GoogleAnalytic string `toml:"google_analytic"`
 }
 
 type Config struct {
@@ -48,8 +62,18 @@ type Config struct {
 }
 
 func init() {
+	Testing = strings.HasSuffix(os.Args[0], ".test")
+	if Testing {
+		// Under `go test`: don't touch flag.CommandLine (the testing
+		// framework will parse its own flags later) and don't read a
+		// config file. Tests should populate C directly if they need it.
+		return
+	}
+
 	configPath := flag.String("config", "./conf/config.toml", "config path")
+	exportDir := flag.String("export", "", "if set, render the site into this directory and exit")
 	flag.Parse()
+	ExportDir = strings.TrimSpace(*exportDir)
 
 	data, err := ioutil.ReadFile(*configPath)
 	if err != nil {
@@ -60,5 +84,5 @@ func init() {
 		fmt.Println("decode config file:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("config:%+v\n", C)
+	fmt.Printf("config:%+v export=%q\n", C, ExportDir)
 }

@@ -4,59 +4,110 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`gobog` is a small Markdown-only blog server written in Go (module `github.com/SmartBrave/gobog`, Go 1.16). It reads Markdown files from disk at startup, parses Jekyll-style front-matter, and serves rendered HTML using templates from a theme directory.
+`gobog` is a small Markdown-only blog written in Go (module `github.com/SmartBrave/gobog`, Go 1.16). It can run in two modes:
+
+- **Server mode** (default): boots two `http.Server`s (HTTP + HTTPS), reads Markdown from `[blog].source` once at startup, watches the directory with `fsnotify` and renders pages on demand using templates from `[blog].theme`.
+- **Static export mode** (`-export <dir>`): renders the entire site into `<dir>` and exits. The output mirrors the gobog HTTP routes one-for-one and is drop-in compatible with the GitHub Pages-style layout used by `sbraveyoung/sbraveyoung.github.io`.
 
 ## Common commands
 
 ```bash
-make build          # cleans and runs: go build -o gobog src/main.go
-make release        # build, then stage gobog + conf/ + themes/ under release/
-make start          # nohup ./gobog >debug.log 2>&1 &
-make stop           # pkill the running gobog process
-go run src/main.go  # run directly; uses ./conf/config.toml by default
-./gobog -config /path/to/config.toml   # override config path
+make build                                  # cleans and runs: go build -o gobog src/main.go
+make release                                # build, then stage gobog + conf/ + themes/ under release/
+make start / make stop / make restart       # daemonize / kill / kill+start
+go test ./src/...                           # run unit tests (article, server)
+go test -race ./src/...                     # run with the race detector
+go run src/main.go -config conf/config.toml # default flags
+./gobog -config conf/config.toml -export ./dist  # static export
 ```
 
-There is no test suite wired up.
-
-Binding `:80` / `:443` (defaults in `conf/config.toml`) requires root or `setcap`. For local dev, edit `[http].addr`/`addrs` and provide cert paths, or comment out the TLS server in `src/server/server.go`.
+Binding `:80` / `:443` (defaults in `conf/config.toml`) requires root or `setcap`. For local dev, edit `[http].addr`/`addrs` to high ports.
 
 ## Architecture
 
-The unusual thing about this codebase is that **`main.go` does no work** — it just `sync.WaitGroup.Wait()`s forever. All bootstrapping happens via package `init()` functions, chained by import order:
+The init-driven bootstrap chain is still in place but the long-running serve is now explicit:
 
-1. `src/config` — `init()` parses the `-config` flag and decodes TOML into the package-global `config.C`.
-2. `src/blog` — `init()` walks `config.C.Blog.Source` for each entry in `BlogTypes` (`post`, `about`). Top-level files become `Article`s; subdirectories become "group" articles whose `SubArticle` list is the directory's `.md` files. Results are sorted and stored in `blog.Blog.Articles[type]`.
-3. `src/server` — `init()` builds two `http.Server`s (HTTP + HTTPS) sharing one `mux`, then calls `gracehttp.Serve` (Facebook archive's graceful restart wrapper). This call **blocks**, which is what keeps the process alive; `main.go`'s WaitGroup is just defensive.
-
-`src/main.go` imports `src/server` with a blank import (`_`) to trigger this chain. Adding a new top-level package means importing it from `main.go` (or transitively) so its `init()` runs.
+1. `src/config.init()` — parses `-config` and `-export`, decodes the TOML into `config.C`. Detects test binaries via the `.test` suffix and skips file I/O so unit tests don't fight the `flag` package.
+2. `src/blog.init()` — constructs `blog.Blog`, calls `Blog.Reload()` to scan `[blog].source` once, then (in serve mode only) starts an `fsnotify` watcher that re-runs `Reload` on every `.md` change with a 300 ms debounce. `BlogST` guards `articles` and `byTag` with a `sync.RWMutex`; reads go through `Articles`/`Groups`/`AllPosts`/`PostsByTag`/`Tags`/`FindByURL`.
+3. `src/main.go` — branches on `config.ExportDir`: empty → `server.Run()` (blocks via `gracehttp.Serve`); non-empty → `server.Export(...)` and exit.
 
 ### Request handlers (`src/server/server.go`)
 
-Routes are wired in `Server.newHandler()`:
+Routes wired in `Server.newHandler()`:
 
-- `/` → renders `theme/index.html` with the `post` article list.
-- `/post/...` → linear scan of `blog.Blog.Articles["post"]` matching `URL` prefix; if matched article has `SubArticle`s, recurse to find the leaf, then render `theme/post.html` (uses `text/template` here, not `html/template`, so article HTML isn't escaped). Otherwise renders the group with `index.html`.
-- `/about` → first article in the `about` list, rendered via `post.html`.
-- `/image/`, `/css/`, `/js/` → static file passthrough rooted at `config.C.Blog.Source` (images) or `config.C.Blog.Theme` (assets).
-- `/bing_img` → proxies the Bing image-of-the-day API.
+| Route | Behaviour |
+| --- | --- |
+| `/` | renders `theme/index.html` with the post group list |
+| `/post/...` | matches the deepest article whose `URL` is a prefix of the request; group → renders sub-list with `index.html`, leaf → renders `post.html` |
+| `/about` | first article from the `about` list, rendered through `post.html` |
+| `/tag/` and `/tag/<name>` | tag index and per-tag listing (uses the precomputed `byTag` map) |
+| `/search?query=...` | in-memory scoring (title 10, tag 5, body 1) |
+| `/atom.xml`, `/sitemap.xml`, `/robots.txt` | feed + SEO endpoints (see `src/server/feed.go`) |
+| `/healthz` | liveness probe, returns `ok` |
+| `/image/`, `/css/`, `/js/` | static passthrough; `safeServeFile` enforces both URL-prefix and filesystem-root containment so `/image/../../etc/passwd` is rejected |
+| `/bing_img` | proxies the Bing image-of-the-day API |
 
-Markdown is rendered on each request via the package-level `mdRenderer` in `src/server/server.go` — a `goldmark.Markdown` configured with `extension.GFM` (tables, strikethrough, autolinks, task lists), `html.WithXHTML()`, and `html.WithUnsafe()` (raw HTML in posts is intentionally allowed because the post template uses `text/template`, not `html/template`). The shared `renderArticle` helper prepends `## <title>` before rendering. Results are stored back on `Article.Parse` but the entire article slice is shared across goroutines without locking, and the field is rewritten on every request — be careful introducing mutation, and prefer fixing the cache/race together rather than piling on more shared writes.
+When `[http].redirect_tls = true` and a TLS keypair is configured, the plain-HTTP server is swapped for a 301 redirector that points clients at the HTTPS listener. With it false (or TLS not configured), HTTP and HTTPS share the same handler.
+
+### Markdown rendering (`src/server/render.go`)
+
+`mdRenderer` is a package-level `goldmark.Markdown` with `extension.GFM`, `html.WithXHTML()`, `html.WithUnsafe()` (raw HTML in posts is allowed because the post template uses `text/template`, not `html/template`).
+
+`renderArticleHTML` is the only place that calls `goldmark.Convert`. It checks `Article.CachedHTML()` first; on miss it renders, then `Article.StoreHTML()`s the result into a `sync/atomic.Value`. The cache is per-`*Article` and is cleared automatically by hot reload because `BlogST.Reload()` replaces the whole article pointer.
+
+Templates receive an `articleView` wrapper that embeds `*Article` and shadows the `Parse` field with a per-request value. **Don't reintroduce writes to `Article.Parse`** — concurrent requests on the same article would race. The wrapper also exposes `Canonical`, `Description`, `Domain` so theme templates can fill `<link rel="canonical">` and OG meta without reading `config.C` themselves.
 
 ### Article model (`src/article/article.go`)
 
-`NewArticle` reads a Markdown file and parses YAML-ish front-matter delimited by `---` lines (FIXME in source: don't use `---` as a horizontal rule inside post bodies — use `***`). Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection.
+`NewArticle` reads a Markdown file and parses YAML-ish front-matter delimited by `---` lines (FIXME in source: don't use `---` as a horizontal rule inside post bodies — use `***`). Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection. **All `Meta` fields must stay `string`-typed**: the same reflection loop is also used to rewrite the file in place, and it formats values as plain text. Multi-valued fields like `tags` are stored as a comma-separated `TagsRaw` string and split into `Tags []string` after the loop.
 
-If `Title`, `CreateTime`, `Id`, or `URL` are missing, defaults are filled in (`Id` is a CRC32 of body content, formatted as hex), and **the source `.md` file is rewritten in place** with the populated front-matter. Be aware of this side effect when pointing the server at a content directory.
+If `Title`, `CreateTime`, `Id`, or `URL` are missing, defaults are filled in (`Id` is a CRC32 of body content) and **the source `.md` file is rewritten in place** with the populated front-matter. The rewriter `Truncate(0)`s before writing so it is safe across multiple runs. Be aware of this side effect when pointing the server at a content directory.
 
-`Articles` (slice) implements `sort.Interface`: groups (those with `SubArticle != nil`) come first, then leaf articles by `CreateTime` descending using layout `2006-01-02 15:04:05`. Times that fail to parse compare as equal.
+`Article` also computes `WordCount`, `ReadingTimeMin` (250 wpm), and a `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes). `IsDraft()` reads `Draft` (truthy values: `true`/`1`/`yes`); drafts are filtered out by `BlogST.Reload()` unless `[blog].include_drafts = true`.
+
+`Articles` (slice) sort: groups (those with `SubArticle != nil`) first, then leaf articles by `CreateTime` descending using layout `2006-01-02 15:04:05`.
+
+## Static export (`src/server/export.go`)
+
+`server.Export(outDir)` walks `blog.Blog` and writes:
+
+```
+outDir/
+├── index.html
+├── about/index.html
+├── post/<id>/index.html              (leaf post)
+├── post/<id>/index.html              (group landing — sub-list rendered with index.html)
+├── post/<id>/<sub>/index.html        (sub post)
+├── tag/<tag>/index.html
+├── 404.html                          (rendered via the same notFound handler)
+├── atom.xml                          (built by buildAtomFeed)
+├── sitemap.xml                       (built by buildSitemap)
+├── robots.txt
+├── CNAME                             (from [blog].cname, if non-empty)
+├── css/                              (copied from theme)
+├── js/                               (copied from theme)
+└── image/                            (copied from <source>/image)
+```
+
+This layout is drop-in compatible with `sbraveyoung/sbraveyoung.github.io`. `urlToFile(outDir, url)` is the canonical URL → filesystem mapping (covered by `export_test.go`). The legacy `script/export.sh` is kept for reference but the Go subcommand is the supported path: it doesn't need a running server, respects `include_drafts`, and writes the SEO siblings (`atom.xml`, `sitemap.xml`, `robots.txt`).
 
 ## Configuration
 
-`conf/config.toml` is the single source of runtime config. The Dockerfile uses `sed` to substitute `${YOUR_CERT_PATH}`, `${YOUR_SOURCE_PATH}`, and `${IMAGE_PATH}` placeholders at build time — keep those placeholder strings in sync between `conf/config.toml`, `script/export.sh`, and `dockerfile` if you rename them.
+`conf/config.toml` keys actually consumed:
 
-The blog content directory (`[blog].source`) is expected to contain subdirectories named after `BlogTypes` keys in `src/blog/blog.go` (currently `post/` and `about/`). Adding a new type means extending that map — startup `os.Exit(1)`s if the directory is missing.
+- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`.
+- `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`.
+- `[log]`: passthrough to beego's logger (currently unwired).
 
-## Static export
+The Dockerfile uses `sed` to substitute `${YOUR_CERT_PATH}`, `${YOUR_SOURCE_PATH}`, and `${IMAGE_PATH}` placeholders at build time — keep those placeholder strings in sync between `conf/config.toml`, `script/export.sh`, and `dockerfile` if you rename them.
 
-`script/export.sh` is a separate utility that crawls a running gobog instance over HTTP and writes static HTML into `./export/`. It greps for `tag="export"` markers in rendered pages to discover post URLs, so theme templates must keep that attribute on links you want crawled.
+The blog content directory (`[blog].source`) is expected to contain subdirectories named after `BlogTypes` keys in `src/blog/blog.go` (currently `post/` and `about/`). Adding a new type means extending that map — `Reload` returns an error and startup aborts if a type's directory is missing.
+
+## Testing
+
+Unit tests live next to their packages:
+
+- `src/article/article_test.go` covers front-matter parsing, in-place rewrite stability, tag splitting, CJK + ASCII word counting, sort order, summary extraction, draft detection, and the lazy HTML cache.
+- `src/server/export_test.go`, `src/server/safefs_test.go` cover the URL → filesystem mapping and the path-traversal guard.
+
+The test binary detects itself via `os.Args[0]` ending in `.test` and short-circuits `config.init()` (no flag parsing, no TOML read) and `blog.init()` (no disk scan, no fsnotify). Tests that need state should set `config.C` directly and call `blog.Blog.SetForTesting`.

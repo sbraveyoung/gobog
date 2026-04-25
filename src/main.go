@@ -1,13 +1,23 @@
 package main
 
 import (
-	"sync"
+	"fmt"
+	"os"
 
-	_ "github.com/SmartBrave/gobog/src/server"
+	"github.com/SmartBrave/gobog/src/config"
+	"github.com/SmartBrave/gobog/src/server"
 )
 
 func main() {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	wg.Wait()
+	if config.ExportDir != "" {
+		if err := server.Export(config.ExportDir); err != nil {
+			fmt.Fprintln(os.Stderr, "export:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if err := server.Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "serve:", err)
+		os.Exit(1)
+	}
 }
