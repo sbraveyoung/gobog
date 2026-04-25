@@ -1,12 +1,16 @@
-all:build
+all: build
 
-.PHONY:clean
+.PHONY: clean build release start stop restart
 
-build:clean
+clean:
+	rm -f gobog
+	rm -rf release
+
+build: clean
 	go build -o gobog src/main.go
 
-release:build
-	mkdir release/bin
+release: build
+	mkdir -p release/bin
 	cp -r conf themes release
 	mv gobog release/bin
 
@@ -16,4 +20,4 @@ start:
 stop:
 	kill -9 `ps aux | grep gobog | grep -v "grep" | awk '{print $$2}'`
 
-restart:stop,start
+restart: stop start

@@ -56,6 +56,9 @@ func init() {
 		fmt.Println("open config file:", err)
 		os.Exit(1)
 	}
-	toml.Decode(string(data), &C)
+	if _, err := toml.Decode(string(data), &C); err != nil {
+		fmt.Println("decode config file:", err)
+		os.Exit(1)
+	}
 	fmt.Printf("config:%+v\n", C)
 }

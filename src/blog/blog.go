@@ -6,11 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/SmartBrave/gobog/src/article"
 	articlepkg "github.com/SmartBrave/gobog/src/article"
 	"github.com/SmartBrave/gobog/src/config"
 	"github.com/astaxie/beego/logs"
-	"github.com/prometheus/common/log"
 )
 
 var (
@@ -33,7 +31,7 @@ type BlogST struct {
 	Description string
 	Author      string
 	Theme       string
-	Articles    map[string]article.Articles
+	Articles    map[string]articlepkg.Articles
 }
 
 func init() {
@@ -44,7 +42,7 @@ func init() {
 		Description: config.C.Blog.Description,
 		Author:      config.C.Blog.Author,
 		Theme:       config.C.Blog.Theme,
-		Articles:    make(map[string]article.Articles),
+		Articles:    make(map[string]articlepkg.Articles),
 	}
 
 	for _, tYpe := range BlogTypes {
@@ -92,7 +90,7 @@ func init() {
 				for _, subName := range subNames {
 					subPath := pathpkg.Join(path, subName)
 					if !strings.HasSuffix(subPath, ".md") {
-						log.Warn("this file is not markdown,path:", subPath)
+						logs.Warn("this file is not markdown,path:", subPath)
 						continue
 					}
 					subArticle, err := articlepkg.NewArticle(subPath, articlepkg.ARTICLE, article.URL)
@@ -106,7 +104,7 @@ func init() {
 				articles = append(articles, article)
 			} else {
 				if !strings.HasSuffix(path, ".md") {
-					log.Warn("this file is not markdown,path:", path)
+					logs.Warn("this file is not markdown,path:", path)
 					continue
 				}
 				article, err := articlepkg.NewArticle(path, articlepkg.ARTICLE, "/"+tYpe)

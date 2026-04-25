@@ -91,6 +91,7 @@ func NewArticle(path, articleType, fatherURL string) (*Article, error) {
 		logs.Error("open error:", err, " path:", path)
 		return nil, err
 	}
+	defer file.Close()
 
 	reader := bufio.NewReader(file)
 	stat := START
@@ -149,8 +150,7 @@ func NewArticle(path, articleType, fatherURL string) (*Article, error) {
 	metaUpdated := false
 	if article.Title == "" {
 		metaUpdated = true
-		article.Title = pathpkg.Base(path)
-		article.Title = strings.TrimRight(article.Title, ".md")
+		article.Title = strings.TrimSuffix(pathpkg.Base(path), ".md")
 	}
 	if article.CreateTime == "" {
 		metaUpdated = true
@@ -184,7 +184,6 @@ func NewArticle(path, articleType, fatherURL string) (*Article, error) {
 		}
 		writeString = append(writeString, []byte("---\n")...)
 		writeString = append(writeString, article.Content...)
-		fmt.Println("writeString:", string(writeString))
 		_, err = writer.WriteString(string(writeString))
 		if err != nil {
 			logs.Error("writeString err:", err)
@@ -196,7 +195,6 @@ func NewArticle(path, articleType, fatherURL string) (*Article, error) {
 			return article, err
 		}
 	}
-	file.Close()
 	return article, nil
 }
 
