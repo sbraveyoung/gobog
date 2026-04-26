@@ -81,6 +81,7 @@
                 {{ if $v.IsPrivate }}<span class="badge-priv" title="Private">🔒</span>{{ end }}
                 <a href="{{ $v.URL }}" tag="export">{{ $v.Title }}</a>
                 {{ if $v.SubArticle }}<span class="badge-group">{{ len $v.SubArticle }} posts</span>{{ end }}
+                {{ if $v.IsAI }}<span class="badge-ai" title="AI-generated content">🤖 {{ $v.AILabel }}</span>{{ end }}
             </li>
             {{ end }}
 

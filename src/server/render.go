@@ -157,6 +157,8 @@ type articleView struct {
 	ViewCount   int64
 	Pinned      bool
 	Private     bool
+	AI          bool
+	AILabel     string
 }
 
 func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
@@ -178,5 +180,7 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 		ViewCount:   n,
 		Pinned:      a.IsPinned(),
 		Private:     a.IsPrivate(),
+		AI:          a.IsAI(),
+		AILabel:     a.AILabel(),
 	}
 }

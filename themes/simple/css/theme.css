@@ -127,6 +127,36 @@
     font-size: 0.85em;
 }
 
+/* AI badge: top-right of the listing row (anchors on the .list-group-item
+ * via position:relative), inline-flex inside the post meta bar.
+ */
+.badge-ai {
+    background: linear-gradient(90deg, #6c7cff 0%, #9650ff 100%);
+    color: #fff;
+    border: 0;
+    padding: 1px 9px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    box-shadow: 0 1px 3px rgba(108, 124, 255, 0.25);
+}
+
+.list-group-item.title {
+    position: relative;
+}
+
+.list-group-item.title .badge-ai {
+    position: absolute;
+    top: 6px;
+    right: 10px;
+}
+
+[data-theme="dark"] .badge-ai {
+    box-shadow: 0 1px 3px rgba(150, 80, 255, 0.4);
+}
+
 /* Theme toggle button — fixed bottom-right so it never fights nav layout. */
 
 .theme-toggle {

@@ -263,6 +263,38 @@ func TestCachedHTMLIsLazyAndStable(t *testing.T) {
 	}
 }
 
+func TestAIBadgeSemantics(t *testing.T) {
+	cases := []struct {
+		raw       string
+		wantIsAI  bool
+		wantLabel string
+	}{
+		{"", false, ""},
+		{"true", true, "AI"},
+		{"True", true, "AI"},
+		{"1", true, "AI"},
+		{"yes", true, "AI"},
+		{"on", true, "AI"},
+		{"false", false, ""},   // explicit false isn't an AI badge
+		{"claude", true, "claude"},
+		{"GPT-4o", true, "GPT-4o"},
+		{"gemini-2.5", true, "gemini-2.5"},
+		{"  claude  ", true, "claude"}, // surrounding whitespace trimmed
+	}
+	for _, c := range cases {
+		a := &Article{}
+		a.AI = c.raw
+		if got := a.IsAI(); got != c.wantIsAI {
+			t.Errorf("IsAI(%q) = %v, want %v", c.raw, got, c.wantIsAI)
+		}
+		if c.wantIsAI {
+			if got := a.AILabel(); got != c.wantLabel {
+				t.Errorf("AILabel(%q) = %q, want %q", c.raw, got, c.wantLabel)
+			}
+		}
+	}
+}
+
 func TestIsDraft(t *testing.T) {
 	cases := []struct {
 		raw  string

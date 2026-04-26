@@ -55,7 +55,11 @@ type Meta struct {
 	// Hidden articles are dropped from listings entirely (like Draft) but
 	// the URL keeps resolving — useful for "temporarily off" rather than
 	// "work in progress". Toggle via [blog].include_hidden.
-	Hidden        string `meta:"hidden"`
+	Hidden string `meta:"hidden"`
+	// AI marks an AI-generated / -assisted post. Truthy values (true / 1 /
+	// yes / on) render a generic "AI" badge; any other non-empty string
+	// is treated as the model name and shown verbatim ("claude", "gpt-4o").
+	AI            string `meta:"ai"`
 	TyporaRootURL string `meta:"typora-root-url"`
 }
 
@@ -94,6 +98,38 @@ func (a *Article) IsPrivate() bool { return truthy(a.Private) }
 
 // IsHidden drops the article from listings entirely (URL keeps resolving).
 func (a *Article) IsHidden() bool { return truthy(a.Hidden) }
+
+// IsAI reports whether the front-matter marks this article as AI-generated.
+// A truthy value (true / 1 / yes / on) counts; any other non-empty,
+// non-falsy string is treated as the model name and also counts. Explicit
+// false / 0 / no / off return false so authors can write `ai: false` to
+// mean "I wrote this myself".
+func (a *Article) IsAI() bool {
+	v := strings.ToLower(strings.TrimSpace(a.AI))
+	if v == "" {
+		return false
+	}
+	switch v {
+	case "false", "0", "no", "off":
+		return false
+	}
+	return true
+}
+
+// AILabel returns the human-facing badge text. For truthy keywords it
+// returns "AI"; otherwise the verbatim trimmed value (so "claude" renders
+// as "🤖 claude" while `ai: true` renders as just "🤖 AI"). Returns "" when
+// IsAI is false.
+func (a *Article) AILabel() string {
+	if !a.IsAI() {
+		return ""
+	}
+	v := strings.TrimSpace(a.AI)
+	if truthy(v) {
+		return "AI"
+	}
+	return v
+}
 
 func (a *Article) IsGroup() bool { return len(a.SubArticle) > 0 }
 

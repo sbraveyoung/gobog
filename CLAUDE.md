@@ -99,6 +99,7 @@ The visibility quartet is governed by a shared `truthy` helper (case-insensitive
 - `IsHidden()` — temporarily off; excluded from listings unless `[blog].include_hidden`. Mechanically the same as Draft today; the distinction is purely semantic for the author.
 - `IsPrivate()` — listed in indexes but the body is gated by HTTP Basic auth (see `[auth]`). Filtered out of `atom.xml`, `sitemap.xml`, and the static export entirely (no auth on a static host).
 - `IsPinned()` — sticks the article to the top of its containing listing, overriding the usual create_time descending order. The `Articles` sort considers the pinned bit before the date.
+- `IsAI()` / `AILabel()` — `ai:` front-matter marks AI-generated / -assisted content. Truthy values render a generic "🤖 AI" badge; any other non-empty, non-falsy string is treated as a model name and shown verbatim ("🤖 claude", "🤖 GPT-4o"). Authors can write `ai: false` to mean "I wrote this myself".
 
 `Slugify(s)` returns a kebab-case ASCII slug; `SlugOrHash(s)` falls back to a stable CRC32 hex when the slug is empty (e.g. CJK-only titles), so URLs are always addressable.
 
