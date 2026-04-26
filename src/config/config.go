@@ -74,12 +74,31 @@ type DataConfig struct {
 	Dir string `toml:"dir"`
 }
 
+// ImageConfig drives the on-the-fly watermark applied to JPEG/PNG responses
+// from /image/. Watermark text is the only required field; when blank, the
+// server hands images through untouched.
+type ImageConfig struct {
+	WatermarkText     string `toml:"watermark_text"`
+	WatermarkPosition string `toml:"watermark_position"` // top-left, top-right, bottom-left, bottom-right (default), center
+}
+
+// BackupConfig periodically tars + gzips [blog].source into <dir>. Off by
+// default; turn on by setting Enabled=true and a sensible Interval.
+type BackupConfig struct {
+	Enabled  bool   `toml:"enabled"`
+	Dir      string `toml:"dir"`      // where to write archives; defaults to <data>/backups
+	Interval string `toml:"interval"` // Go duration, e.g. "1h", "30m", "24h". Default 1h.
+	Keep     int    `toml:"keep"`     // rotation: keep newest N archives. Default 7.
+}
+
 type Config struct {
-	Blog BlogConfig
-	Http HttpConfig
-	Log  LogConfig
-	Auth AuthConfig
-	Data DataConfig
+	Blog   BlogConfig
+	Http   HttpConfig
+	Log    LogConfig
+	Auth   AuthConfig
+	Data   DataConfig
+	Image  ImageConfig
+	Backup BackupConfig
 }
 
 func init() {

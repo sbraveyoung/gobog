@@ -6,9 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=0.5">
 
     <link href="/css/main.css" rel="stylesheet" type="text/css">
+    <link href="/css/theme.css" rel="stylesheet" type="text/css">
     <link rel="alternate" type="application/atom+xml" href="/atom.xml" title="Atom feed">
     <link rel="shortcut icon" href="/image/Yc.jpg">
     <link href="/css/prism.css" rel="stylesheet" />
+    <script>
+        // Apply persisted theme before paint to avoid the dark-mode flash.
+        (function () {
+            var t = localStorage.getItem('gobog-theme');
+            if (t === 'dark' || (t === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
     <link rel="canonical" href="{{ .Canonical }}">
     <meta name="description" content="{{ html .Description }}">
     <meta property="og:type" content="article">
@@ -47,9 +57,47 @@
         }
     </script>
     <script src="/js/prism.js"></script>
+    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">🌓</button>
     <div class="inner">
+        <div class="post-meta">
+            {{ if .Pinned }}<span class="badge badge-pinned" title="Pinned">📌 Pinned</span>{{ end }}
+            {{ if .Private }}<span class="badge badge-private" title="Private — requires auth">🔒 Private</span>{{ end }}
+            {{ if .CreateTime }}<span class="meta-item meta-date">📅 {{ .CreateTime }}</span>{{ end }}
+            {{ if .WordCount }}<span class="meta-item meta-words">📝 {{ .WordCount }} words</span>{{ end }}
+            {{ if .ReadingTimeMin }}<span class="meta-item meta-time">⏱ {{ .ReadingTimeMin }} min read</span>{{ end }}
+            {{ if .ViewCount }}<span class="meta-item meta-views">👀 {{ .ViewCount }} views</span>{{ end }}
+            {{ range .Tags }}<a class="meta-tag" href="/tag/{{ . }}">#{{ . }}</a> {{ end }}
+        </div>
         {{ .Parse }}
     </div>
+    <script>
+        (function () {
+            var btn = document.getElementById('theme-toggle');
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                var cur = document.documentElement.getAttribute('data-theme');
+                var next = cur === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('gobog-theme', next);
+            });
+            // Code-block copy buttons.
+            document.querySelectorAll('pre > code').forEach(function (code) {
+                var pre = code.parentElement;
+                pre.classList.add('code-block');
+                var btn = document.createElement('button');
+                btn.className = 'copy-btn';
+                btn.type = 'button';
+                btn.textContent = 'copy';
+                btn.addEventListener('click', function () {
+                    navigator.clipboard.writeText(code.innerText).then(function () {
+                        btn.textContent = 'copied';
+                        setTimeout(function () { btn.textContent = 'copy'; }, 1500);
+                    });
+                });
+                pre.appendChild(btn);
+            });
+        })();
+    </script>
 </body>
 
 <footer>

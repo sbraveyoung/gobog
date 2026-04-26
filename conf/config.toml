@@ -45,7 +45,25 @@ username=""
 password_hash=""
 realm="gobog"
 
-# Mutable server state (view counts, shared snippets) lives here. Defaults to
-# ./gobog-data when blank. Static export does not use this directory.
+# Mutable server state (view counts, shared snippets, watermark cache,
+# backups) lives here. Defaults to ./gobog-data when blank. Static export
+# does not use this directory.
 [data]
 dir="./gobog-data"
+
+# Optional: overlay a text watermark on JPEG / PNG responses from /image/.
+# Leave watermark_text blank to disable. Watermarked output is cached on
+# disk under <data>/wm-cache/, keyed by source path + mtime + watermark
+# text + position so config edits invalidate stale cache entries.
+[image]
+watermark_text=""
+watermark_position="bottom-right"  # top-left | top-right | bottom-left | bottom-right | center
+
+# Optional: periodic tar.gz backup of [blog].source. The worker runs once
+# at startup, then on the ticker. dir defaults to <data>/backups; keep is
+# the rotation count (newest N archives kept, the rest deleted).
+[backup]
+enabled=false
+interval="1h"
+dir=""
+keep=7

@@ -28,6 +28,7 @@ var server = &Server{}
 // not running in static-export mode.
 func Run() error {
 	initViewStore()
+	startBackupWorker(make(chan struct{})) // never stopped; gracehttp owns the lifecycle
 	servers := []*http.Server{}
 
 	// Plain HTTP: redirect to HTTPS when TLS is configured and the operator
@@ -347,26 +348,43 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 	// Obsidian users keep images alongside their notes (or in any
 	// attachments folder) instead of forcing them into a single dir.
 	cleaned := path.Clean("/" + r.URL.Path)
-	if strings.HasPrefix(cleaned, "/image/") {
-		legacyAbs, _ := filepath.Abs(filepath.Join(config.C.Blog.Source, filepath.FromSlash(cleaned)))
-		rootAbs, _ := filepath.Abs(config.C.Blog.Source)
-		if legacyAbs != "" && strings.HasPrefix(legacyAbs, rootAbs+string(filepath.Separator)) {
-			if fi, err := os.Stat(legacyAbs); err == nil && !fi.IsDir() {
-				http.ServeFile(w, r, legacyAbs)
-				return
-			}
+	if !strings.HasPrefix(cleaned, "/image/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	rootAbs, _ := filepath.Abs(config.C.Blog.Source)
+
+	// Resolve to a filesystem path: legacy <source>/image/X first, vault
+	// index by basename second.
+	var fullAbs string
+	legacyAbs, _ := filepath.Abs(filepath.Join(config.C.Blog.Source, filepath.FromSlash(cleaned)))
+	if legacyAbs != "" && strings.HasPrefix(legacyAbs, rootAbs+string(filepath.Separator)) {
+		if fi, err := os.Stat(legacyAbs); err == nil && !fi.IsDir() {
+			fullAbs = legacyAbs
 		}
+	}
+	if fullAbs == "" {
 		base := path.Base(cleaned)
 		if rel := blog.Blog.Wiki().ResolveImage(base); rel != "" {
 			full := filepath.Join(config.C.Blog.Source, filepath.FromSlash(rel))
-			fullAbs, _ := filepath.Abs(full)
-			if fullAbs != "" && strings.HasPrefix(fullAbs, rootAbs+string(filepath.Separator)) {
-				http.ServeFile(w, r, full)
-				return
+			abs, _ := filepath.Abs(full)
+			if abs != "" && strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
+				fullAbs = abs
 			}
 		}
 	}
-	http.NotFound(w, r)
+	if fullAbs == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Watermark JPEG/PNG when configured. serveWatermarked falls back
+	// internally if the format isn't supported or decoding fails.
+	if serveWatermarked(w, r, fullAbs) {
+		return
+	}
+	http.ServeFile(w, r, fullAbs)
 }
 
 func cssHandler(w http.ResponseWriter, r *http.Request) {

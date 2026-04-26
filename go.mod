@@ -18,4 +18,5 @@ require (
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/yuin/goldmark v1.4.15
+	golang.org/x/image v0.5.0 // indirect
 )

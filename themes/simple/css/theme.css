@@ -1,0 +1,203 @@
+/* gobog theme additions: dark mode + post meta + listing badges + code copy
+ * button. Loaded after main.css and home.css so these rules win without
+ * having to mark anything !important except where Bootstrap forces our hand.
+ */
+
+:root {
+    --gobog-bg: #ffffff;
+    --gobog-fg: #1a1a1a;
+    --gobog-muted: #6a6a6a;
+    --gobog-link: #1d6dde;
+    --gobog-card-bg: #f7f7f8;
+    --gobog-border: #e0e0e0;
+    --gobog-code-bg: #f3f3f3;
+    --gobog-pin-bg: #fff7d8;
+    --gobog-pin-fg: #5a4500;
+    --gobog-priv-bg: #fde2e2;
+    --gobog-priv-fg: #6a1818;
+}
+
+[data-theme="dark"] {
+    --gobog-bg: #181a1c;
+    --gobog-fg: #e6e6e6;
+    --gobog-muted: #9a9a9a;
+    --gobog-link: #6db1ff;
+    --gobog-card-bg: #23262b;
+    --gobog-border: #2f3338;
+    --gobog-code-bg: #15171a;
+    --gobog-pin-bg: #4a3c00;
+    --gobog-pin-fg: #ffe8a3;
+    --gobog-priv-bg: #4a1818;
+    --gobog-priv-fg: #ffcfcf;
+}
+
+[data-theme="dark"] body {
+    background: var(--gobog-bg);
+    color: var(--gobog-fg);
+}
+
+[data-theme="dark"] a {
+    color: var(--gobog-link);
+}
+
+[data-theme="dark"] .navbar-default {
+    background-color: #1f2226 !important;
+    border-color: #2a2d31 !important;
+}
+
+[data-theme="dark"] .navbar-default .navbar-brand,
+[data-theme="dark"] .navbar-default .navbar-nav>li>a {
+    color: var(--gobog-fg) !important;
+}
+
+[data-theme="dark"] .list-group-item {
+    background-color: var(--gobog-card-bg);
+    border-color: var(--gobog-border);
+    color: var(--gobog-fg);
+}
+
+[data-theme="dark"] pre,
+[data-theme="dark"] code {
+    background-color: var(--gobog-code-bg);
+    color: #e6edf3;
+}
+
+[data-theme="dark"] .footer {
+    color: var(--gobog-muted);
+}
+
+/* Post meta bar — date / words / reading time / view count / tags. */
+
+.post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    margin: 0 0 1.4em 0;
+    padding-bottom: 0.8em;
+    border-bottom: 1px solid var(--gobog-border);
+    color: var(--gobog-muted);
+    font-size: 0.9em;
+}
+
+.post-meta .meta-item {
+    white-space: nowrap;
+}
+
+.post-meta .meta-tag {
+    background: var(--gobog-card-bg);
+    border: 1px solid var(--gobog-border);
+    border-radius: 12px;
+    padding: 1px 10px;
+    color: var(--gobog-link);
+    text-decoration: none;
+    font-size: 0.85em;
+}
+
+.post-meta .meta-tag:hover {
+    background: var(--gobog-link);
+    color: var(--gobog-bg);
+    border-color: var(--gobog-link);
+}
+
+/* Pin / private badges in both post header and listing rows. */
+
+.badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.badge-pinned, .badge-pin {
+    background: var(--gobog-pin-bg);
+    color: var(--gobog-pin-fg);
+}
+
+.badge-private, .badge-priv {
+    background: var(--gobog-priv-bg);
+    color: var(--gobog-priv-fg);
+}
+
+.badge-group {
+    margin-left: 8px;
+    color: var(--gobog-muted);
+    font-size: 0.85em;
+}
+
+/* Theme toggle button — fixed bottom-right so it never fights nav layout. */
+
+.theme-toggle {
+    position: fixed;
+    bottom: 18px;
+    right: 18px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 1050;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.theme-toggle:hover {
+    transform: scale(1.05);
+}
+
+/* Code-block copy button — overlays each <pre><code>. */
+
+pre.code-block {
+    position: relative;
+}
+
+pre.code-block .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 4px;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+pre.code-block:hover .copy-btn {
+    opacity: 1;
+}
+
+/* Search box in the navbar (was previously commented out in markup). */
+
+.navbar-search {
+    float: right;
+    margin: 12px 14px 0 0;
+}
+
+.navbar-search input {
+    padding: 4px 10px;
+    border: 1px solid var(--gobog-border);
+    border-radius: 14px;
+    background: var(--gobog-bg);
+    color: var(--gobog-fg);
+    font: inherit;
+    width: 180px;
+    max-width: 32vw;
+}
+
+.navbar-search button {
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    cursor: pointer;
+}

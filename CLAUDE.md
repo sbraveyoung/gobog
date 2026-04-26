@@ -50,7 +50,7 @@ Routes wired in `Server.newHandler()`:
 | `/healthz` | liveness probe, returns `ok` |
 | `/snippet`, `/snippet/<id>` | gist-style snippet sharing — POST creates (auth required), GET shows; rendered through the same goldmark pipeline as posts |
 | `/css/`, `/js/` | static passthrough; `safeServeFile` enforces both URL-prefix and filesystem-root containment so `/css/../../etc/passwd` is rejected |
-| `/image/<rest>` | first tries `<source>/image/<rest>` (legacy) and falls back to `WikiIndex.ResolveImage(basename)` so attachments scattered through the vault can still be served |
+| `/image/<rest>` | first tries `<source>/image/<rest>` (legacy) and falls back to `WikiIndex.ResolveImage(basename)` so attachments scattered through the vault can still be served. JPEG / PNG responses go through `serveWatermarked` when `[image].watermark_text` is set; output is cached on disk under `<data>/wm-cache/` keyed by source path + mtime + watermark text + position |
 | `/bing_img` | proxies the Bing image-of-the-day API |
 
 `postHandler` now does an exact-URL walk via `findArticle`. The original implementation's prefix-then-fallback would render the deepest matching group when an unknown URL fell under it — clean 404 instead.
@@ -136,7 +136,9 @@ outDir/
 - `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`.
 - `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`.
 - `[auth]`: `username`, `password_hash` (hex sha256 of the plaintext password — generate via `printf 'pw' | sha256sum`), `realm`. When either field is empty, every auth-gated endpoint returns 503 (so private posts and snippet POSTs fail closed).
-- `[data]`: `dir` — where the server keeps mutable state (`views.json` for the view counter, `snippets/` for shared snippets). Defaults to `./gobog-data`. Static export ignores this.
+- `[data]`: `dir` — where the server keeps mutable state (`views.json`, `snippets/`, `wm-cache/`, `backups/`). Defaults to `./gobog-data`. Static export ignores this.
+- `[image]`: `watermark_text` (turns watermarking on when non-empty), `watermark_position` (`top-left` / `top-right` / `bottom-left` / `bottom-right` (default) / `center`). Caches go under `<data>/wm-cache/`.
+- `[backup]`: `enabled`, `interval` (Go duration like `1h`, `24h`; default `1h`), `dir` (defaults to `<data>/backups`), `keep` (rotation; default `7`). The worker runs once at startup and then on the ticker, writes `gobog-<utc-timestamp>.tar.gz`, and rotates by name (timestamps sort lexicographically).
 - `[log]`: passthrough to beego's logger (currently unwired).
 
 The Dockerfile uses `sed` to substitute `${YOUR_CERT_PATH}`, `${YOUR_SOURCE_PATH}`, and `${IMAGE_PATH}` placeholders at build time — keep those placeholder strings in sync between `conf/config.toml`, `script/export.sh`, and `dockerfile` if you rename them.
@@ -155,6 +157,8 @@ Unit tests live next to their packages:
 - `src/server/snippets_test.go` — POST without auth (401), POST with auth (200 + JSON), GET round-trip, bad-id 404, bad-id rejection of `..`/spaces, GET form for the empty path.
 - `src/server/export_test.go` — `urlToFile` mapping, `withoutPrivate` recursive filter (drops private leaves AND empty-after-filter groups so the exported tree never links to a 404).
 - `src/server/safefs_test.go` — `safeServeFile` rejects `/image/../../etc/passwd`-style traversal.
+- `src/server/watermark_test.go` — disabled when text is empty, skipped on unsupported formats (SVG / GIF), correct PNG round-trip, on-disk cache hit returns identical bytes, every position constant produces a valid image.
+- `src/server/backup_test.go` — `writeArchive` skips top-level `.obsidian` / `.git`, `rotateBackups` keeps newest N (and `keep <= 0` is a no-op), `backupOnce` round-trip, `archiveName` uses UTC.
 
 The test binary detects itself via `os.Args[0]` ending in `.test` and short-circuits `config.init()` (no flag parsing, no TOML read) and `blog.init()` (no disk scan, no fsnotify). Tests that need state should set `config.C` directly and call `blog.Blog.SetForTesting`.
 
