@@ -143,6 +143,16 @@ body {
     color: var(--gobog-link);
 }
 
+/* home.css ships a global `button { position: absolute }` from the old
+ * navbar — overrule it for every button this theme owns so they sit where
+ * their flex / parent-relative positioning expects.
+ */
+.nav-toggle,
+.site-search button,
+.site-links button {
+    position: static;
+}
+
 .nav-toggle {
     display: none;
     margin-left: auto;
@@ -152,6 +162,8 @@ body {
     font-size: 22px;
     cursor: pointer;
     padding: 6px 10px;
+    width: auto;
+    height: auto;
 }
 
 @media (max-width: 720px) {
@@ -166,12 +178,16 @@ body {
         gap: 0;
         background: var(--gobog-bg);
         border-bottom: 1px solid var(--gobog-border);
-        padding: 12px 18px 18px;
+        padding: 0 18px;
         max-height: 0;
         overflow: hidden;
-        transition: max-height .2s ease;
+        box-sizing: border-box;
+        transition: max-height .2s ease, padding .2s ease;
     }
-    .site-nav.is-open { max-height: 60vh; }
+    .site-nav.is-open {
+        max-height: 60vh;
+        padding: 12px 18px 18px;
+    }
     .site-search { width: 100%; }
     .site-search input { width: 100%; max-width: none; flex: 1; }
     .site-links {

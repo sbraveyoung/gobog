@@ -52,7 +52,7 @@
                     <a href="{{ $v.URL }}" tag="export">{{ $v.Title }}</a>
                     {{ if $v.SubArticle }}<span class="badge-group">{{ len $v.SubArticle }} posts</span>{{ end }}
                 </h2>
-                {{ if $v.Summary }}<p class="post-item-summary">{{ $v.Summary }}</p>{{ end }}
+                {{ if and $v.Summary (not $v.IsPrivate) }}<p class="post-item-summary">{{ $v.Summary }}</p>{{ end }}
                 <div class="post-item-meta">
                     {{ if $v.CreateTime }}<span>📅 {{ $v.CreateTime }}</span>{{ end }}
                     {{ if $v.ReadingTimeMin }}<span>⏱ {{ $v.ReadingTimeMin }} min</span>{{ end }}
