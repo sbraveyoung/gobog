@@ -346,6 +346,24 @@ func TestSlugOrHashFallback(t *testing.T) {
 	}
 }
 
+func TestCoverFrontMatterIsParsed(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "with-cover.md")
+	writeFile(t, p, `---
+title: Hero
+cover: hero.png
+---
+body
+`)
+	a, err := ParseFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Cover != "hero.png" {
+		t.Errorf("Cover = %q, want hero.png", a.Cover)
+	}
+}
+
 func TestParseFileDoesNotRewrite(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "note.md")

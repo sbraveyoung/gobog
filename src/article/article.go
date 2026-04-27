@@ -59,7 +59,11 @@ type Meta struct {
 	// AI marks an AI-generated / -assisted post. Truthy values (true / 1 /
 	// yes / on) render a generic "AI" badge; any other non-empty string
 	// is treated as the model name and shown verbatim ("claude", "gpt-4o").
-	AI            string `meta:"ai"`
+	AI string `meta:"ai"`
+	// Cover is an optional hero image — relative path resolved against the
+	// blog's image index, or an absolute URL. Renders at the top of the
+	// post page and is also used for OG meta.
+	Cover         string `meta:"cover"`
 	TyporaRootURL string `meta:"typora-root-url"`
 }
 

@@ -159,6 +159,7 @@ type articleView struct {
 	Private     bool
 	AI          bool
 	AILabel     string
+	CoverURL    string
 }
 
 func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
@@ -182,5 +183,21 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 		Private:     a.IsPrivate(),
 		AI:          a.IsAI(),
 		AILabel:     a.AILabel(),
+		CoverURL:    coverURL(a.Cover),
 	}
+}
+
+// coverURL turns a front-matter `cover:` value into a usable URL. Absolute
+// URLs (http(s)://, /...) pass through unchanged; bare names like "cover.png"
+// get prefixed with /image/ so the existing image handler can look them up
+// in the wiki index.
+func coverURL(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	if strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://") || strings.HasPrefix(v, "/") {
+		return v
+	}
+	return "/image/" + v
 }
