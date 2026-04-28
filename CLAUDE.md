@@ -135,8 +135,8 @@ outDir/
 
 `conf/config.toml` keys actually consumed:
 
-- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`.
-- `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`.
+- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`, `layout` (`auto` / `vault` / `legacy`), `exclude_dirs` (top-level vault dirs to skip, case-insensitive).
+- `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`. Missing cert/key files **don't** abort startup — the server logs a warning and serves plain HTTP only. `redirect_tls=true` is also disarmed when TLS isn't actually loaded, so users never bounce into a non-existent listener.
 - `[auth]`: `username`, `password_hash` (hex sha256 of the plaintext password — generate via `printf 'pw' | sha256sum`), `realm`. When either field is empty, every auth-gated endpoint returns 503 (so private posts and snippet POSTs fail closed).
 - `[data]`: `dir` — where the server keeps mutable state (`views.json`, `snippets/`, `wm-cache/`, `backups/`). Defaults to `./gobog-data`. Static export ignores this.
 - `[image]`: `watermark_text` (turns watermarking on when non-empty), `watermark_position` (`top-left` / `top-right` / `bottom-left` / `bottom-right` (default) / `center`). Caches go under `<data>/wm-cache/`.

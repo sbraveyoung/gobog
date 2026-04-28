@@ -29,13 +29,28 @@ var server = &Server{}
 func Run() error {
 	initViewStore()
 	startBackupWorker(make(chan struct{})) // never stopped; gracehttp owns the lifecycle
+
+	// Try to load the TLS keypair upfront. Missing or unreadable files
+	// downgrade to a warning so the operator can still run plain HTTP for
+	// dev/local setups without scrubbing [http].cert/key from the config.
+	var tlsCert *tls.Certificate
+	if config.C.Http.Cert != "" && config.C.Http.Key != "" {
+		c, err := tls.LoadX509KeyPair(config.C.Http.Cert, config.C.Http.Key)
+		if err != nil {
+			logs.Warn("TLS keypair could not be loaded, continuing without HTTPS:", err)
+		} else {
+			tlsCert = &c
+		}
+	}
+
 	servers := []*http.Server{}
 
-	// Plain HTTP: redirect to HTTPS when TLS is configured and the operator
-	// asked for it; otherwise share the same handler with the TLS server.
+	// Plain HTTP: only act as a redirector when TLS actually loaded;
+	// otherwise serve the site directly so [http].redirect_tls=true with
+	// a missing cert doesn't bounce users into a void.
 	if config.C.Http.Addr != "" {
 		var handler http.Handler
-		if config.C.Http.RedirectTLS && config.C.Http.Cert != "" && config.C.Http.Key != "" {
+		if config.C.Http.RedirectTLS && tlsCert != nil && config.C.Http.Addrs != "" {
 			handler = http.HandlerFunc(redirectToHTTPS)
 		} else {
 			handler = server.newHandler()
@@ -46,16 +61,12 @@ func Run() error {
 		})
 	}
 
-	if config.C.Http.Addrs != "" && config.C.Http.Cert != "" && config.C.Http.Key != "" {
-		certificate, err := tls.LoadX509KeyPair(config.C.Http.Cert, config.C.Http.Key)
-		if err != nil {
-			return fmt.Errorf("load TLS keypair: %w", err)
-		}
+	if config.C.Http.Addrs != "" && tlsCert != nil {
 		servers = append(servers, &http.Server{
 			Addr:    config.C.Http.Addrs,
 			Handler: server.newHandler(),
 			TLSConfig: &tls.Config{
-				Certificates: []tls.Certificate{certificate},
+				Certificates: []tls.Certificate{*tlsCert},
 			},
 		})
 	}
@@ -131,6 +142,10 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	urlPath := r.URL.Path
 	matched := findArticle(blog.Blog.Groups(), urlPath)
 	if matched == nil {
+		// Diagnostic: dump up to 5 known URLs so an operator hitting an
+		// unexpected 404 can see what the scanner actually has indexed.
+		known := knownPostURLs(5)
+		logs.Warn(fmt.Sprintf("post 404: requested=%q, %d posts indexed, sample=%v", urlPath, len(blog.Blog.AllPosts()), known))
 		notFound(w, r)
 		return
 	}
@@ -139,6 +154,20 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		renderGroup(w, matched.SubArticle)
 	}
+}
+
+// knownPostURLs returns up to n leaf-post URLs from the index — used to
+// surface diagnostics on /post/ 404s.
+func knownPostURLs(n int) []string {
+	all := blog.Blog.AllPosts()
+	if len(all) > n {
+		all = all[:n]
+	}
+	out := make([]string, 0, len(all))
+	for _, a := range all {
+		out = append(out, a.URL)
+	}
+	return out
 }
 
 // findArticle walks the article tree (any depth) looking for an exact URL

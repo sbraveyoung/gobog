@@ -149,14 +149,18 @@ func (b *BlogST) Wiki() *WikiIndex {
 // Two layouts are supported:
 //
 //   - Legacy gobog: <source>/post/... (group dirs allowed, 1 level deep) and
-//     <source>/about/*.md. Activated when <source>/post/ exists.
+//     <source>/about/*.md. Activated when <source>/post/ exists OR when
+//     [blog].layout = "legacy".
 //   - Obsidian-style folder: <source>/ contains arbitrarily nested .md files.
 //     Each subdirectory becomes a group; arbitrary depth is supported. Any
 //     .md placed under <source>/about/ is treated as the single about page
 //     (first by sort order). Anywhere else under <source> is a post.
+//     Use [blog].layout = "vault" to force this even when a "post" folder
+//     happens to exist in the vault.
 func (b *BlogST) Reload() error {
 	source := config.C.Blog.Source
-	useLegacy := dirExists(filepath.Join(source, "post"))
+
+	useLegacy := pickLegacyMode(source)
 
 	articles := make(map[string]articlepkg.Articles)
 	wiki := newWikiIndex()
@@ -202,6 +206,35 @@ func dirExists(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
+// pickLegacyMode honors [blog].layout when set ("legacy" / "vault"); the
+// default ("auto" / empty) falls back to detecting <source>/post/ on disk.
+func pickLegacyMode(source string) bool {
+	switch strings.ToLower(strings.TrimSpace(config.C.Blog.Layout)) {
+	case "legacy":
+		return true
+	case "vault":
+		return false
+	}
+	return dirExists(filepath.Join(source, "post"))
+}
+
+// shouldExcludeTop reports whether a top-level directory name in vault mode
+// should be skipped — both via the user's [blog].exclude_dirs list and via
+// the implicit "about" exclusion (handled separately) and the dotfile
+// rule. Comparison is case-insensitive on basename.
+func shouldExcludeTop(name string) bool {
+	lower := strings.ToLower(name)
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	for _, ex := range config.C.Blog.ExcludeDirs {
+		if strings.EqualFold(strings.TrimSpace(ex), lower) {
+			return true
+		}
+	}
+	return false
+}
+
 // loadVaultPosts walks source recursively, treating each .md file as a post
 // and each subdirectory as a group. Files under "about/" are excluded (the
 // caller picks them up separately).
@@ -227,8 +260,13 @@ func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlep
 		}
 		full := filepath.Join(dirPath, name)
 		if e.IsDir() {
-			if excludeAbout && dirPath == sourceRoot && name == "about" {
-				continue
+			if dirPath == sourceRoot {
+				if excludeAbout && name == "about" {
+					continue
+				}
+				if shouldExcludeTop(name) {
+					continue
+				}
 			}
 			child, err := loadGroupDir(full, sourceRoot, urlPrefix)
 			if err != nil {

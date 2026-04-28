@@ -43,17 +43,28 @@ type HttpConfig struct {
 }
 
 type BlogConfig struct {
-	Domain         string
-	Title          string
-	Subtitle       string
-	Description    string
-	Author         string
-	Theme          string
-	Source         string
-	CNAME          string
-	IncludeDrafts  bool   `toml:"include_drafts"`
-	IncludeHidden  bool   `toml:"include_hidden"`
-	GoogleAnalytic string `toml:"google_analytic"`
+	Domain      string
+	Title       string
+	Subtitle    string
+	Description string
+	Author      string
+	Theme       string
+	Source      string
+	CNAME       string
+	// Layout controls how Source is interpreted. "auto" (default) picks
+	// legacy when <source>/post/ exists, vault otherwise. "vault" forces
+	// recursive scan from <source> root. "legacy" forces the original
+	// gobog convention (<source>/post + <source>/about). Setting this
+	// avoids the failure mode where a user happens to have a folder
+	// named "post" in their vault and accidentally trips legacy.
+	Layout string `toml:"layout"`
+	// ExcludeDirs is a list of top-level directory names under <source>
+	// that the vault scanner should ignore (e.g. "templates", "drafts",
+	// "_archive"). Comparison is case-insensitive on basename.
+	ExcludeDirs    []string `toml:"exclude_dirs"`
+	IncludeDrafts  bool     `toml:"include_drafts"`
+	IncludeHidden  bool     `toml:"include_hidden"`
+	GoogleAnalytic string   `toml:"google_analytic"`
 }
 
 // AuthConfig gates private articles and snippet creation. Username is the

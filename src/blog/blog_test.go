@@ -3,6 +3,7 @@ package blog
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	articlepkg "github.com/SmartBrave/gobog/src/article"
@@ -106,6 +107,75 @@ func TestReloadLegacyLayoutStillWorks(t *testing.T) {
 	}
 	if !hasGroup {
 		t.Error("expected at least one group with sub-articles in legacy layout")
+	}
+}
+
+// TestExcludeDirs verifies [blog].exclude_dirs and the implicit "about"
+// exclusion both keep their named top-level folders out of the listing.
+func TestExcludeDirs(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, filepath.Join(root, "Hello.md"), "")
+	writeNote(t, filepath.Join(root, "Templates", "tpl.md"), "")
+	writeNote(t, filepath.Join(root, "Drafts", "wip.md"), "")
+	writeNote(t, filepath.Join(root, "Tech", "ok.md"), "")
+
+	prevSrc, prevExcl := config.C.Blog.Source, config.C.Blog.ExcludeDirs
+	config.C.Blog.Source = root
+	config.C.Blog.ExcludeDirs = []string{"Templates", "drafts"} // mixed case
+	t.Cleanup(func() {
+		config.C.Blog.Source = prevSrc
+		config.C.Blog.ExcludeDirs = prevExcl
+	})
+
+	if err := Blog.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	urls := map[string]bool{}
+	for _, a := range Blog.AllPosts() {
+		urls[a.URL] = true
+	}
+	for _, want := range []string{"/post/hello", "/post/tech/ok"} {
+		if !urls[want] {
+			t.Errorf("missing %q in %v", want, urls)
+		}
+	}
+	for url := range urls {
+		if strings.HasPrefix(url, "/post/templates") || strings.HasPrefix(url, "/post/drafts") {
+			t.Errorf("excluded dir leaked into listing: %s", url)
+		}
+	}
+}
+
+// TestLayoutOverrideForcesVault demonstrates that [blog].layout = "vault"
+// keeps the recursive scanner even when <source>/post/ exists, fixing the
+// "user happens to have a folder named post and accidentally trips legacy
+// mode and loses everything else" failure.
+func TestLayoutOverrideForcesVault(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, filepath.Join(root, "post", "in-post.md"), "")
+	writeNote(t, filepath.Join(root, "Hello.md"), "")
+	writeNote(t, filepath.Join(root, "Tech", "http.md"), "")
+
+	prevSrc, prevLayout := config.C.Blog.Source, config.C.Blog.Layout
+	config.C.Blog.Source = root
+	config.C.Blog.Layout = "vault"
+	t.Cleanup(func() {
+		config.C.Blog.Source = prevSrc
+		config.C.Blog.Layout = prevLayout
+	})
+
+	if err := Blog.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	urls := map[string]bool{}
+	for _, a := range Blog.AllPosts() {
+		urls[a.URL] = true
+	}
+	// All three .md files surface under vault rules.
+	for _, want := range []string{"/post/post/in-post", "/post/hello", "/post/tech/http"} {
+		if !urls[want] {
+			t.Errorf("layout=vault: missing %q in %v", want, urls)
+		}
 	}
 }
 
