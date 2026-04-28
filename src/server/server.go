@@ -171,15 +171,17 @@ func knownPostURLs(n int) []string {
 }
 
 // findArticle walks the article tree (any depth) looking for an exact URL
-// match. Returns nil when no article owns urlPath — the original
-// implementation accidentally fell back to the deepest matching group,
-// which made unknown deep URLs render that group's listing instead of 404.
+// match. The earlier version short-circuited recursion unless the requested
+// path started with the group's URL — but that breaks when an article's
+// front-matter pins a URL that doesn't share its parent group's slug
+// (typical with legacy posts whose `url:` was rewritten to `/post/<hex>/<hex>`
+// but whose physical location is now nested deeper). Walk every node.
 func findArticle(list articlepkg.Articles, urlPath string) *articlepkg.Article {
 	for _, a := range list {
 		if a.URL == urlPath {
 			return a
 		}
-		if len(a.SubArticle) > 0 && strings.HasPrefix(urlPath, a.URL+"/") {
+		if len(a.SubArticle) > 0 {
 			if hit := findArticle(a.SubArticle, urlPath); hit != nil {
 				return hit
 			}
