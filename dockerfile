@@ -1,9 +1,9 @@
 # FROM centos:8
 FROM golang:latest
-MAINTAINER SmartBrave <SmartBraveCoder@gmail.com>
+LABEL maintainer="sbraveyoung <SmartBraveCoder@gmail.com>"
 
 #build command: docker build -t gobog
-#run command: docker run -v $(pwd)/../blog:/go/src/github.com/SmartBrave/blog gobog
+#run command: docker run -v $(pwd)/../blog:/go/src/github.com/sbraveyoung/blog gobog
 ARG  CERT_PATH=..\\/blog\\/cert
 ARG  SOURCE_PATH=..\\/blog\\/source
 ARG  IMAGE_PATH=..\\/..\\/blog\\/source\\/image
@@ -14,8 +14,8 @@ ARG  IMAGE_PATH=..\\/..\\/blog\\/source\\/image
     # && cp -r go /usr/local/go
     #
 
-COPY . $GOPATH/src/github.com/SmartBrave/gobog
-WORKDIR $GOPATH/src/github.com/SmartBrave/gobog
+COPY . $GOPATH/src/github.com/sbraveyoung/gobog
+WORKDIR $GOPATH/src/github.com/sbraveyoung/gobog
 
 # RUN /usr/local/go/bin/go build src/main.go
 RUN go build src/main.go

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`gobog` is a small Markdown-only blog written in Go (module `github.com/SmartBrave/gobog`, Go 1.16). It is designed to consume an Obsidian-style folder (typically a subfolder of an Obsidian vault — point `[blog].source` at e.g. `Vault/Blog/`) and run in one of two modes:
+`gobog` is a small Markdown-only blog written in Go (module `github.com/sbraveyoung/gobog`, Go 1.16). It is designed to consume an Obsidian-style folder (typically a subfolder of an Obsidian vault — point `[blog].source` at e.g. `Vault/Blog/`) and run in one of two modes:
 
 - **Server mode** (default): boots two `http.Server`s (HTTP + HTTPS), scans `[blog].source` once at startup, watches the directory recursively with `fsnotify`, and renders pages on demand using templates from `[blog].theme`. Wikilinks and image embeds are resolved through an in-memory index built during the scan.
 - **Static export mode** (`-export <dir>`): renders the entire site into `<dir>` and exits. The output mirrors the gobog HTTP routes one-for-one and is drop-in compatible with GitHub Pages.

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
-	"github.com/SmartBrave/gobog/src/blog"
-	"github.com/SmartBrave/gobog/src/config"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/blog"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 type atomFeed struct {

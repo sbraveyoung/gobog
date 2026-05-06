@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 // Snippet handlers depend on config (data dir + auth + theme) and on the

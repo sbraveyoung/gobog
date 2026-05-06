@@ -1,5 +1,7 @@
 # gobog
 
+**[English](./README.md)** | [简体中文](./README.zh-CN.md)
+
 A small, dependency-light Markdown blog server written in Go. Point it at an
 [Obsidian](https://obsidian.md/) vault folder (or any directory of `.md`
 files) and it does one of two things:

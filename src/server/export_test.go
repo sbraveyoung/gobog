@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
 )
 
 func TestUrlToFile(t *testing.T) {

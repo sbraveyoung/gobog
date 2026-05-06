@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 func TestRequireAuth(t *testing.T) {

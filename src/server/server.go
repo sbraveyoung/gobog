@@ -2,8 +2,10 @@ package server
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -11,11 +13,11 @@ import (
 	"sort"
 	"strings"
 	ttemplate "text/template"
+	"time"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
-	"github.com/SmartBrave/gobog/src/blog"
-	"github.com/SmartBrave/gobog/src/config"
-	httpc "github.com/SmartBrave/utils/easyhttpclient"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/blog"
+	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/astaxie/beego/logs"
 	"github.com/facebookarchive/grace/gracehttp"
 )
@@ -432,31 +434,48 @@ func bingImgHandler(w http.ResponseWriter, r *http.Request) {
 			logs.Error("panic in bingImgHandler:", err)
 		}
 	}()
-	const url = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
+	const apiURL = "https://cn.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1"
 
-	client := httpc.NewHttpClient(url).M("GET")
-	respCode, data, err := client.Do()
-	if err != nil || respCode != 200 {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	apiResp, err := client.Get(apiURL)
+	if err != nil {
 		logs.Error("bing api:", err)
-		w.Write([]byte("Server Error"))
+		http.Error(w, "Server Error", http.StatusBadGateway)
 		return
 	}
+	defer apiResp.Body.Close()
+	if apiResp.StatusCode != http.StatusOK {
+		logs.Error("bing api status:", apiResp.Status)
+		http.Error(w, "Server Error", http.StatusBadGateway)
+		return
+	}
+
 	var j resp
-	if err := data.Unmarshal(&j); err != nil {
+	if err := json.NewDecoder(apiResp.Body).Decode(&j); err != nil {
 		logs.Error("bing decode:", err)
-		w.Write([]byte("Server Error"))
+		http.Error(w, "Server Error", http.StatusBadGateway)
 		return
 	}
 	if len(j.Images) == 0 {
-		w.Write([]byte("Server Error"))
+		http.Error(w, "Server Error", http.StatusBadGateway)
 		return
 	}
-	_, image, err := httpc.NewHttpClient("https://cn.bing.com" + j.Images[0].Url).M("GET").Do()
+
+	imgResp, err := client.Get("https://cn.bing.com" + j.Images[0].Url)
 	if err != nil {
 		logs.Error("bing fetch:", err)
-		w.Write([]byte("Server Error"))
+		http.Error(w, "Server Error", http.StatusBadGateway)
 		return
 	}
-	w.Write(image.Data)
+	defer imgResp.Body.Close()
+	if imgResp.StatusCode != http.StatusOK {
+		http.Error(w, "Server Error", http.StatusBadGateway)
+		return
+	}
+	if ct := imgResp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	_, _ = io.Copy(w, imgResp.Body)
 }
 

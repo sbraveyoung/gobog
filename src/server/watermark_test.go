@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 func makePNG(t *testing.T, path string, w, h int) {

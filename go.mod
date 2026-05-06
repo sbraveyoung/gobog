@@ -1,10 +1,9 @@
-module github.com/SmartBrave/gobog
+module github.com/sbraveyoung/gobog
 
 go 1.16
 
 require (
 	github.com/BurntSushi/toml v0.4.1
-	github.com/SmartBrave/utils v0.0.0-20210713122451-7fadf9f7b19e
 	github.com/astaxie/beego v1.12.3
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/facebookarchive/grace v0.0.0-20180706040059-75cf19382434

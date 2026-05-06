@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/astaxie/beego/logs"
 )
 

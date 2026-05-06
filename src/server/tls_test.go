@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 // TestTLSGracefulMissingCert verifies that pointing at non-existent cert

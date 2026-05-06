@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SmartBrave/gobog/src/blog"
+	"github.com/sbraveyoung/gobog/src/blog"
 )
 
 func TestExpandWikilinks(t *testing.T) {

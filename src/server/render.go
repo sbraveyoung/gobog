@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
-	"github.com/SmartBrave/gobog/src/blog"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/blog"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"

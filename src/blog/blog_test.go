@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
-	"github.com/SmartBrave/gobog/src/config"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 func writeNote(t *testing.T, path, body string) {

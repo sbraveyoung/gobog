@@ -17,7 +17,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/SmartBrave/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/astaxie/beego/logs"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"

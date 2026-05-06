@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/SmartBrave/gobog/src/config"
-	"github.com/SmartBrave/gobog/src/server"
+	"github.com/sbraveyoung/gobog/src/config"
+	"github.com/sbraveyoung/gobog/src/server"
 )
 
 func main() {

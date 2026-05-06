@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
 )
 
 // TestFindArticleHonoursFrontMatterURL exercises the regression behind the

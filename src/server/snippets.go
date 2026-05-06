@@ -12,8 +12,8 @@ import (
 	"strings"
 	ttemplate "text/template"
 
-	articlepkg "github.com/SmartBrave/gobog/src/article"
-	"github.com/SmartBrave/gobog/src/config"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/astaxie/beego/logs"
 )
 
