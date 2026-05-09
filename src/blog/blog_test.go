@@ -3,6 +3,7 @@ package blog
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -79,13 +80,14 @@ func TestReloadVaultLayout(t *testing.T) {
 	}
 }
 
-// TestReloadLegacyLayoutStillWorks covers back-compat: when <source>/post/
-// exists, the scanner uses the original gobog convention (1 level of group
-// nesting + crc32 hex IDs) instead of the vault layout.
-func TestReloadLegacyLayoutStillWorks(t *testing.T) {
+// TestReloadPersistsMissingMeta covers the original gobog product design:
+// when an article is missing id / url / title / create_time, the scanner
+// fills them in deterministically and writes the result back to disk, so
+// the URL stays stable even if the file is later renamed or moved.
+func TestReloadPersistsMissingMeta(t *testing.T) {
 	root := t.TempDir()
-	writeNote(t, filepath.Join(root, "post", "leaf.md"), "")
-	writeNote(t, filepath.Join(root, "post", "group", "sub.md"), "")
+	notePath := filepath.Join(root, "Tech", "HTTP.md")
+	writeNote(t, notePath, "no front matter at all\n")
 
 	prev := config.C.Blog.Source
 	config.C.Blog.Source = root
@@ -95,18 +97,21 @@ func TestReloadLegacyLayoutStillWorks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	groups := Blog.Groups()
-	if len(groups) != 2 {
-		t.Fatalf("legacy layout: want 2 top-level entries, got %d", len(groups))
+	got, err := os.ReadFile(notePath)
+	if err != nil {
+		t.Fatal(err)
 	}
-	hasGroup := false
-	for _, g := range groups {
-		if len(g.SubArticle) > 0 {
-			hasGroup = true
-		}
+	if !strings.HasPrefix(string(got), "---") {
+		t.Errorf("scanner did not persist front-matter back; file body:\n%s", got)
 	}
-	if !hasGroup {
-		t.Error("expected at least one group with sub-articles in legacy layout")
+
+	// Reparse — id / url / title / create_time must all be populated.
+	a, err := articlepkg.ParseFile(notePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Id == "" || a.URL == "" || a.Title == "" || a.CreateTime == "" {
+		t.Errorf("expected all defaults persisted, got %+v", a.Meta)
 	}
 }
 
@@ -146,11 +151,39 @@ func TestExcludeDirs(t *testing.T) {
 	}
 }
 
-// TestLayoutOverrideForcesVault demonstrates that [blog].layout = "vault"
-// keeps the recursive scanner even when <source>/post/ exists, fixing the
-// "user happens to have a folder named post and accidentally trips legacy
-// mode and loses everything else" failure.
-func TestLayoutOverrideForcesVault(t *testing.T) {
+// TestLayoutLegacyURLs verifies [blog].layout = "legacy" generates URLs
+// matching the original gobog scheme — `/post/<crc32(parent)>/<crc32(body)>`
+// for nested files, `/post/<crc32(body)>` for files at <source>/. The
+// scanner shape (recursive walk) is the same regardless of layout.
+func TestLayoutLegacyURLs(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, filepath.Join(root, "Hello.md"), "hello body\n")
+	writeNote(t, filepath.Join(root, "Tech", "http.md"), "http body\n")
+
+	prevSrc, prevLayout := config.C.Blog.Source, config.C.Blog.Layout
+	config.C.Blog.Source = root
+	config.C.Blog.Layout = "legacy"
+	t.Cleanup(func() {
+		config.C.Blog.Source = prevSrc
+		config.C.Blog.Layout = prevLayout
+	})
+
+	if err := Blog.Reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	hexRE := regexp.MustCompile(`^/post/[0-9a-f]+(/[0-9a-f]+)?$`)
+	for _, a := range Blog.AllPosts() {
+		if !hexRE.MatchString(a.URL) {
+			t.Errorf("layout=legacy URL not in /post/<hex>(/<hex>) form: %s", a.URL)
+		}
+	}
+}
+
+// TestLayoutVaultURLs (default) confirms slugified path URLs, including the
+// previously-failing "user has a folder named post" case — vault mode never
+// trips into legacy because there is no longer a separate scanner.
+func TestLayoutVaultURLs(t *testing.T) {
 	root := t.TempDir()
 	writeNote(t, filepath.Join(root, "post", "in-post.md"), "")
 	writeNote(t, filepath.Join(root, "Hello.md"), "")
@@ -171,7 +204,6 @@ func TestLayoutOverrideForcesVault(t *testing.T) {
 	for _, a := range Blog.AllPosts() {
 		urls[a.URL] = true
 	}
-	// All three .md files surface under vault rules.
 	for _, want := range []string{"/post/post/in-post", "/post/hello", "/post/tech/http"} {
 		if !urls[want] {
 			t.Errorf("layout=vault: missing %q in %v", want, urls)

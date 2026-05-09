@@ -146,38 +146,28 @@ func (b *BlogST) Wiki() *WikiIndex {
 
 // Reload re-scans <source> and atomically replaces the in-memory state.
 //
-// Two layouts are supported:
+// Layout: <source>/ contains arbitrarily nested .md files. Each subdirectory
+// becomes a group; arbitrary depth is supported. Any .md placed under
+// <source>/about/ is treated as the single about page (first by sort order).
+// Anywhere else under <source> is a post.
 //
-//   - Legacy gobog: <source>/post/... (group dirs allowed, 1 level deep) and
-//     <source>/about/*.md. Activated when <source>/post/ exists OR when
-//     [blog].layout = "legacy".
-//   - Obsidian-style folder: <source>/ contains arbitrarily nested .md files.
-//     Each subdirectory becomes a group; arbitrary depth is supported. Any
-//     .md placed under <source>/about/ is treated as the single about page
-//     (first by sort order). Anywhere else under <source> is a post.
-//     Use [blog].layout = "vault" to force this even when a "post" folder
-//     happens to exist in the vault.
+// Missing front-matter (id / url / title / create_time) is auto-filled and
+// persisted back to the source file the first time the scanner sees a note,
+// matching the original gobog product design. URL generation strategy is
+// controlled by [blog].layout: "vault" (default) uses slugified path,
+// "legacy" uses crc32 hex like the original gobog (kept so already-published
+// hex URLs stay stable for sites that switched over).
 func (b *BlogST) Reload() error {
 	source := config.C.Blog.Source
-
-	useLegacy := pickLegacyMode(source)
 
 	articles := make(map[string]articlepkg.Articles)
 	wiki := newWikiIndex()
 
-	if useLegacy {
-		posts, err := loadLegacyPosts(filepath.Join(source, "post"))
-		if err != nil {
-			return err
-		}
-		articles[BlogTypes["post"]] = posts
-	} else {
-		posts, err := loadVaultPosts(source)
-		if err != nil {
-			return err
-		}
-		articles[BlogTypes["post"]] = posts
+	posts, err := loadDir(source, source, "/post", true)
+	if err != nil {
+		return err
 	}
+	articles[BlogTypes["post"]] = posts
 
 	abouts, err := loadAbouts(filepath.Join(source, BlogTypes["about"]))
 	if err != nil && !os.IsNotExist(err) {
@@ -206,16 +196,11 @@ func dirExists(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// pickLegacyMode honors [blog].layout when set ("legacy" / "vault"); the
-// default ("auto" / empty) falls back to detecting <source>/post/ on disk.
-func pickLegacyMode(source string) bool {
-	switch strings.ToLower(strings.TrimSpace(config.C.Blog.Layout)) {
-	case "legacy":
-		return true
-	case "vault":
-		return false
-	}
-	return dirExists(filepath.Join(source, "post"))
+// useLegacyURLs reports whether [blog].layout asks for legacy-style URLs
+// (`/post/<crc32-hex>/<crc32-hex>`) for newly-encountered articles.
+// "auto" / "vault" / empty → false (slug URLs); "legacy" → true.
+func useLegacyURLs() bool {
+	return strings.EqualFold(strings.TrimSpace(config.C.Blog.Layout), "legacy")
 }
 
 // shouldExcludeTop reports whether a top-level directory name in vault mode
@@ -233,13 +218,6 @@ func shouldExcludeTop(name string) bool {
 		}
 	}
 	return false
-}
-
-// loadVaultPosts walks source recursively, treating each .md file as a post
-// and each subdirectory as a group. Files under "about/" are excluded (the
-// caller picks them up separately).
-func loadVaultPosts(source string) (articlepkg.Articles, error) {
-	return loadDir(source, source, "/post", true)
 }
 
 // loadDir loads a directory into an Articles slice. dirPath is the directory
@@ -322,6 +300,15 @@ func loadGroupDir(dirPath, sourceRoot, urlPrefix string) (*articlepkg.Article, e
 	return g, nil
 }
 
+// buildArticle parses the .md at path and fills in any missing meta
+// (id / url / title / create_time) deterministically from the path / file
+// stat / [blog].layout, then persists the filled-in front-matter back to
+// disk. Persisting on first scan is part of the original gobog product
+// design — once a note is on the site, its id and url stop drifting even
+// if the file is later renamed or moved.
+//
+// Returns (nil, nil) when the article should be skipped (draft / hidden
+// without the include_drafts / include_hidden flag).
 func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Article, error) {
 	a, err := articlepkg.ParseFile(path)
 	if err != nil {
@@ -333,30 +320,69 @@ func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Art
 	if a.IsHidden() && !config.C.Blog.IncludeHidden {
 		return nil, nil
 	}
+
 	rel, err := filepath.Rel(sourceRoot, path)
 	if err != nil {
 		return nil, err
 	}
 	rel = strings.TrimSuffix(rel, ".md")
-	if a.URL == "" {
-		a.URL = urlPrefix + "/" + slugifyPath(rel)
-	}
-	if a.Id == "" {
-		a.Id = articlepkg.SlugOrHash(strings.TrimSuffix(fileName, ".md"))
-	}
+
+	updated := false
 	if a.Title == "" {
 		a.Title = strings.TrimSuffix(fileName, ".md")
+		updated = true
 	}
 	if a.CreateTime == "" {
-		// Fall back to file mtime so listings sort sensibly even when the
-		// author hasn't filled in front-matter.
 		if fi, err := os.Stat(path); err == nil {
 			a.CreateTime = fi.ModTime().Format(articlepkg.TIME_LAYOUT)
 		} else {
 			a.CreateTime = time.Now().Format(articlepkg.TIME_LAYOUT)
 		}
+		updated = true
+	}
+	if a.Id == "" {
+		a.Id = generateID(rel, fileName, a.Content)
+		updated = true
+	}
+	if a.URL == "" {
+		a.URL = generateURL(rel, urlPrefix, a.Id, a.Content)
+		updated = true
+	}
+
+	if updated {
+		if err := articlepkg.RewriteFrontMatter(a); err != nil {
+			// Persisting is best-effort: a read-only filesystem shouldn't
+			// take the whole site down. Log and serve the in-memory copy.
+			logs.Warn("persist front-matter:", err)
+		}
 	}
 	return a, nil
+}
+
+// generateID picks a stable identifier for the article when front-matter
+// doesn't carry one. Defaults to a slug of the file basename; under
+// [blog].layout="legacy" returns the crc32 hex of the body content (which
+// is what the original gobog used).
+func generateID(rel, fileName string, content []byte) string {
+	if useLegacyURLs() {
+		return articlepkg.CalcID(content)
+	}
+	return articlepkg.SlugOrHash(strings.TrimSuffix(fileName, ".md"))
+}
+
+// generateURL builds the article URL. Default: slugified relative path.
+// Legacy: `<urlPrefix>/<crc32(parent-dir)>/<id>` for nested files (matches
+// the original gobog 1-level group convention) and `<urlPrefix>/<id>` for
+// notes at <source>/.
+func generateURL(rel, urlPrefix, id string, content []byte) string {
+	if useLegacyURLs() {
+		parent := filepath.Dir(rel)
+		if parent == "." || parent == "" || parent == string(filepath.Separator) {
+			return urlPrefix + "/" + id
+		}
+		return urlPrefix + "/" + articlepkg.CalcID([]byte(filepath.Base(parent))) + "/" + id
+	}
+	return urlPrefix + "/" + slugifyPath(rel)
 }
 
 func slugifyPath(rel string) string {
@@ -366,102 +392,6 @@ func slugifyPath(rel string) string {
 		out = append(out, articlepkg.SlugOrHash(p))
 	}
 	return strings.Join(out, "/")
-}
-
-// loadLegacyPosts mimics the original gobog scanner: <source>/post/ with
-// optional 1-level group subdirectories. Kept so existing deployments keep
-// working when <source>/post/ exists.
-func loadLegacyPosts(rootPath string) (articlepkg.Articles, error) {
-	root, err := os.Open(rootPath)
-	if err != nil {
-		return nil, err
-	}
-	names, err := root.Readdirnames(-1)
-	root.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	var list articlepkg.Articles
-	for _, name := range names {
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		path := pathpkg.Join(rootPath, name)
-		fi, err := os.Lstat(path)
-		if err != nil {
-			logs.Warn("lstat:", err)
-			continue
-		}
-		if fi.IsDir() {
-			art, err := articlepkg.NewArticle(path, articlepkg.DIR, "/post")
-			if err != nil {
-				logs.Warn("NewArticle dir:", err)
-				continue
-			}
-			if err := loadLegacyGroup(art, path); err != nil {
-				logs.Warn("loadLegacyGroup:", err)
-				continue
-			}
-			if len(art.SubArticle) == 0 {
-				continue
-			}
-			list = append(list, art)
-		} else {
-			if !strings.HasSuffix(path, ".md") {
-				continue
-			}
-			art, err := articlepkg.NewArticle(path, articlepkg.ARTICLE, "/post")
-			if err != nil {
-				logs.Warn("NewArticle:", err)
-				continue
-			}
-			if art.IsDraft() && !config.C.Blog.IncludeDrafts {
-				continue
-			}
-			if art.IsHidden() && !config.C.Blog.IncludeHidden {
-				continue
-			}
-			list = append(list, art)
-		}
-	}
-	sort.Sort(list)
-	return list, nil
-}
-
-func loadLegacyGroup(group *articlepkg.Article, dir string) error {
-	subRoot, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	names, err := subRoot.Readdirnames(-1)
-	subRoot.Close()
-	if err != nil {
-		return err
-	}
-	for _, n := range names {
-		if strings.HasPrefix(n, ".") {
-			continue
-		}
-		p := pathpkg.Join(dir, n)
-		if !strings.HasSuffix(p, ".md") {
-			continue
-		}
-		sub, err := articlepkg.NewArticle(p, articlepkg.ARTICLE, group.URL)
-		if err != nil {
-			logs.Warn("sub article:", err)
-			continue
-		}
-		if sub.IsDraft() && !config.C.Blog.IncludeDrafts {
-			continue
-		}
-		if sub.IsHidden() && !config.C.Blog.IncludeHidden {
-			continue
-		}
-		group.SubArticle = append(group.SubArticle, sub)
-	}
-	sort.Sort(group.SubArticle)
-	return nil
 }
 
 func loadAbouts(dir string) (articlepkg.Articles, error) {

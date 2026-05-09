@@ -7,7 +7,6 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	pathpkg "path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -16,11 +15,6 @@ import (
 	"unicode"
 
 	"github.com/astaxie/beego/logs"
-)
-
-const (
-	ARTICLE = "article"
-	DIR     = "dir"
 )
 
 const (
@@ -173,8 +167,8 @@ func (a Articles) Less(i, j int) bool {
 
 // ParseFile reads the markdown at path and returns an Article populated from
 // front-matter + body. Does NOT touch the file on disk and does NOT default
-// missing meta — callers in vault mode supply URL/Id/Title/CreateTime
-// derivatively from the path so the user's notes stay untouched.
+// missing meta — callers fill URL/Id/Title/CreateTime derivatively from the
+// path (and may persist the result back via RewriteFrontMatter).
 func ParseFile(path string) (*Article, error) {
 	logs.Debug("parse:", path)
 	a := &Article{Source: path}
@@ -193,56 +187,25 @@ func ParseFile(path string) (*Article, error) {
 	return a, nil
 }
 
-// NewArticle is the legacy constructor. Same shape as before: parses, then
-// fills missing meta and rewrites the file in place.
-func NewArticle(path, articleType, fatherURL string) (*Article, error) {
-	logs.Debug("NewArticle path:", path, " type:", articleType, " father:", fatherURL)
-	a := &Article{Source: path}
-
-	if articleType == DIR {
-		a.Title = pathpkg.Base(path)
-		a.CreateTime = time.Now().Format(TIME_LAYOUT)
-		a.Id = calcID([]byte(a.Title))
-		a.URL = fmt.Sprintf("%s/%s", fatherURL, a.Id)
-		return a, nil
+// RewriteFrontMatter persists a.Meta back to a.Source. It opens the source
+// file with O_RDWR, seeks to 0, truncates and writes a fresh `---`-delimited
+// header followed by a.Content. Caller is responsible for ensuring a.Source
+// is set and that a.Content is the body without front-matter (which is what
+// ParseFile leaves you with).
+//
+// Used by the blog scanner to persist auto-generated id/url/title/create_time
+// the first time it sees a note — the original gobog behavior, retained as
+// product design.
+func RewriteFrontMatter(a *Article) error {
+	if a.Source == "" {
+		return fmt.Errorf("rewrite: article has no source path")
 	}
-
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	file, err := os.OpenFile(a.Source, os.O_RDWR, 0)
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", path, err)
+		return fmt.Errorf("open %s: %w", a.Source, err)
 	}
 	defer file.Close()
-
-	if err := parseInto(a, bufio.NewReader(file)); err != nil {
-		return nil, err
-	}
-
-	metaUpdated := false
-	if a.Title == "" {
-		metaUpdated = true
-		a.Title = strings.TrimSuffix(pathpkg.Base(path), ".md")
-	}
-	if a.CreateTime == "" {
-		metaUpdated = true
-		a.CreateTime = time.Now().Format(TIME_LAYOUT)
-	}
-	if a.Id == "" {
-		metaUpdated = true
-		a.Id = calcID(a.Content)
-	}
-	if a.URL == "" {
-		metaUpdated = true
-		a.URL = fmt.Sprintf("%s/%s", fatherURL, a.Id)
-	}
-
-	if metaUpdated {
-		if err := rewriteFrontMatter(file, a); err != nil {
-			return a, err
-		}
-	}
-
-	finalizeDerived(a)
-	return a, nil
+	return rewriteFrontMatter(file, a)
 }
 
 // parseInto reads YAML-ish front-matter + body into a, leaving derived fields

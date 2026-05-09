@@ -57,8 +57,12 @@ make build                                          # 产出 ./gobog
 URL 路径来自相对文件路径，每段做 slug 化（小写 + ASCII；纯 CJK 段会回退到稳定的
 CRC32 hex，保证 URL 始终可寻址）。
 
-`<source>/post/` 存在时会自动切到 **legacy 模式**；用 `[blog].layout = "vault" |
-"legacy" | "auto"` 显式指定模式可以避免误触发。
+扫描永远是递归的——`[blog].layout` 只控制**新文章的 URL 生成策略**：
+`"vault"`（默认）按 slug 化路径生成；`"legacy"` 复刻老 gobog 的
+`/post/<crc32(parent)>/<crc32(body)>` 形式（保住已发布站点的 hex URL）。
+扫到缺 `id` / `url` / `title` / `create_time` 的笔记时，扫描器会按既定规则
+补齐并**写回 `.md` 文件**——这是 gobog 的产品设计，URL 钉死后即使你把文件
+改名或移动也不会变。
 
 ## Front-matter
 
@@ -123,8 +127,8 @@ domain          = "https://example.com"  # 用于 canonical / atom / sitemap
 title, subtitle, description, author     # 站点元信息
 theme           = "themes/simple"
 source          = "/path/to/your/Vault/Blog"
-layout          = "auto"                 # auto | vault | legacy
-exclude_dirs    = []                     # vault 模式跳过的顶级目录名
+layout          = "vault"                # vault（默认）| legacy — 只决定 URL 生成策略；扫描始终递归
+exclude_dirs    = []                     # 顶级要跳过的目录名
 cname           = "example.com"          # 写入 <export>/CNAME
 include_drafts  = false
 include_hidden  = false

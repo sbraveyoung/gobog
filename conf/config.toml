@@ -26,13 +26,11 @@ description="阅读·实践·分享"
 author="smart"
 theme="themes/simple"
 source="${YOUR_SOURCE_PATH}"
-# Layout interpretation of `source`:
-#   - "auto"   (default) — use legacy if <source>/post/ exists, else vault.
-#   - "vault"  — recursive scan of <source>; subfolders become groups.
-#   - "legacy" — original gobog convention: <source>/post + <source>/about.
-# Force "vault" if you happen to have a folder named "post" in your vault
-# but want everything else scanned too.
-layout="auto"
+# URL generation strategy. The scan itself is always recursive over <source>.
+#   - "vault"  (default) — slugified relative path: /post/tech/http
+#   - "legacy" — original gobog scheme: /post/<crc32(parent)>/<crc32(body)>
+# Articles whose front-matter already has `url:` keep that URL regardless.
+layout="vault"
 # Top-level directories to skip in vault mode. Case-insensitive on basename.
 # Useful for excluding template folders, drafts, attachments, etc.
 exclude_dirs=[]

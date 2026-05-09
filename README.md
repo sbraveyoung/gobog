@@ -59,8 +59,14 @@ The URL path is derived from the relative file path, slugified per segment
 (lowercase + ASCII; CJK-only segments fall back to a stable CRC32 hex so URLs
 stay addressable).
 
-`<source>/post/` enabling **legacy mode** is auto-detected; force the
-behavior you want with `[blog].layout = "vault" | "legacy" | "auto"`.
+The scanner is always recursive — `[blog].layout` only controls URL
+generation strategy: `"vault"` (default) uses the slugified path,
+`"legacy"` uses the original gobog `/post/<crc32(parent)>/<crc32(body)>`
+scheme (kept so already-published hex URLs stay stable). When the scanner
+encounters a note that's missing `id` / `url` / `title` / `create_time`,
+it fills them in deterministically and **persists them back to the `.md`
+file** so URLs stay stable across renames and moves. This is original
+gobog product design, retained.
 
 ## Front-matter
 
@@ -125,7 +131,7 @@ domain          = "https://example.com"  # used for canonical / atom / sitemap
 title, subtitle, description, author     # site metadata
 theme           = "themes/simple"
 source          = "/path/to/your/Vault/Blog"
-layout          = "auto"                 # auto | vault | legacy
+layout          = "vault"                # vault (default) | legacy — URL strategy only; scan is always recursive
 exclude_dirs    = []                     # vault top-level dirs to skip
 cname           = "example.com"          # written to <export>/CNAME
 include_drafts  = false

@@ -30,9 +30,7 @@ Binding `:80` / `:443` (defaults in `conf/config.toml`) requires root or `setcap
 The init-driven bootstrap chain is still in place but the long-running serve is now explicit:
 
 1. `src/config.init()` — parses `-config` and `-export`, decodes the TOML into `config.C`. Detects test binaries via the `.test` suffix and skips file I/O so unit tests don't fight the `flag` package.
-2. `src/blog.init()` — constructs `blog.Blog`, calls `Blog.Reload()` to scan `[blog].source` once, then (in serve mode only) starts a recursive `fsnotify` watcher that re-runs `Reload` on every `.md` change with a 300 ms debounce. `BlogST` guards `articles`, `byTag`, and `wiki` with a `sync.RWMutex`; reads go through `Articles`/`Groups`/`AllPosts`/`PostsByTag`/`Tags`/`FindByURL`/`Wiki`. `Reload` switches between two layouts:
-   - **Vault mode** (no `<source>/post/` directory): walks `<source>` recursively at any depth. Each `.md` becomes a post; each subdirectory becomes a group; URLs are derived from the relative path via `Slugify`. `<source>/about/` is special-cased so the first note inside it becomes `/about`. Hidden directories (`.obsidian/` etc.) are skipped.
-   - **Legacy mode** (when `<source>/post/` exists): falls back to the original 1-level group convention with CRC32-hex IDs and in-place front-matter rewrites. Kept so existing deployments keep booting.
+2. `src/blog.init()` — constructs `blog.Blog`, calls `Blog.Reload()` to scan `[blog].source` once, then (in serve mode only) starts a recursive `fsnotify` watcher that re-runs `Reload` on every `.md` change with a 300 ms debounce. `BlogST` guards `articles`, `byTag`, and `wiki` with a `sync.RWMutex`; reads go through `Articles`/`Groups`/`AllPosts`/`PostsByTag`/`Tags`/`FindByURL`/`Wiki`. `Reload` always walks `<source>` recursively at any depth; each `.md` becomes a post and each subdirectory becomes a group. `<source>/about/` is special-cased so the first note inside it becomes `/about`. Hidden directories (`.obsidian/`, `.git/`) and `[blog].exclude_dirs` entries at the top level are skipped. URL generation is controlled by `[blog].layout`: `"vault"` (default) uses slugified path; `"legacy"` uses the original gobog `/post/<crc32(parent)>/<crc32(body)>` scheme. **Missing front-matter (id / url / title / create_time) is auto-filled and persisted back to the source `.md` file** the first time the scanner sees a note — original gobog product design — so URLs stay stable even when files are later moved or renamed.
 3. `src/main.go` — branches on `config.ExportDir`: empty → `server.Run()` (blocks via `gracehttp.Serve`); non-empty → `server.Export(...)` and exit.
 
 ### Request handlers (`src/server/server.go`)
@@ -84,12 +82,14 @@ Templates receive an `articleView` wrapper that embeds `*Article` and shadows th
 
 ### Article model (`src/article/article.go`)
 
-Two constructors:
+Two helpers:
 
-- **`ParseFile(path)`** is the **read-only** path used by the vault scanner. It parses front-matter and body but never touches the file on disk. URLs / IDs / titles are derived by the caller from the disk path; the article model itself stays pristine.
-- **`NewArticle(path, type, fatherURL)`** is the legacy constructor that mirrors the original gobog behavior: parses, fills missing meta defaults (`Id` = CRC32 of body), and **rewrites the source `.md` in place** to persist them. Only used when `<source>/post/` exists (legacy layout).
+- **`ParseFile(path)`** reads front-matter + body without touching the file. The blog scanner calls this first.
+- **`RewriteFrontMatter(a)`** persists `a.Meta` back to `a.Source` (seek 0 + truncate + rewrite). The blog scanner calls this when defaults were filled in, so the user's vault gets `id` / `url` / `title` / `create_time` written once and never drifts.
 
 Front-matter keys are mapped to `Meta` struct fields via `meta:"..."` tags using reflection. **All `Meta` fields must stay `string`-typed** because the reflective rewriter formats values as plain text. The parser strips `[ ]` from `tags:` so Obsidian's YAML-array form (`tags: [a, b]`) decodes into the same `TagsRaw` as the comma-separated form. Tags are also accepted with a leading `#`.
+
+The blog scanner's `buildArticle` is responsible for filling missing meta and calling `RewriteFrontMatter`. The article package itself does not touch disk during reads.
 
 `Article` derives `WordCount`, `ReadingTimeMin` (250 wpm), `Summary` (description if present, else a stripped-markdown excerpt up to 160 runes), and exposes a lazy `CachedHTML/StoreHTML` pair backed by `sync/atomic.Value` for goroutine-safe caching.
 
@@ -135,7 +135,7 @@ outDir/
 
 `conf/config.toml` keys actually consumed:
 
-- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`, `layout` (`auto` / `vault` / `legacy`), `exclude_dirs` (top-level vault dirs to skip, case-insensitive).
+- `[blog]`: `domain`, `title`, `subtitle`, `description`, `author`, `theme`, `source`, `cname`, `include_drafts`, `include_hidden`, `layout` (`vault` (default) / `legacy` — controls URL generation only; the scanner is always recursive), `exclude_dirs` (top-level vault dirs to skip, case-insensitive).
 - `[http]`: `addr`, `addrs`, `cert`, `key`, `redirect_tls`. Missing cert/key files **don't** abort startup — the server logs a warning and serves plain HTTP only. `redirect_tls=true` is also disarmed when TLS isn't actually loaded, so users never bounce into a non-existent listener.
 - `[auth]`: `username`, `password_hash` (hex sha256 of the plaintext password — generate via `printf 'pw' | sha256sum`), `realm`. When either field is empty, every auth-gated endpoint returns 503 (so private posts and snippet POSTs fail closed).
 - `[data]`: `dir` — where the server keeps mutable state (`views.json`, `snippets/`, `wm-cache/`, `backups/`). Defaults to `./gobog-data`. Static export ignores this.

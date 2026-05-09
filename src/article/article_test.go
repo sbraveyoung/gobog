@@ -15,7 +15,7 @@ func writeFile(t *testing.T, path, body string) {
 	}
 }
 
-func TestNewArticleParsesFrontMatter(t *testing.T) {
+func TestParseFileExposesFrontMatter(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "hello.md")
 	writeFile(t, p, `---
@@ -31,7 +31,7 @@ some body
 with multiple words
 `)
 
-	a, err := NewArticle(p, ARTICLE, "/post")
+	a, err := ParseFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,23 +56,26 @@ with multiple words
 	}
 }
 
-func TestNewArticleFillsMissingMetaAndRewrites(t *testing.T) {
+// TestRewriteFrontMatterRoundTrip verifies the persist-back path used by
+// the blog scanner: parse → fill in defaults → RewriteFrontMatter → parse
+// again should observe the same Meta.
+func TestRewriteFrontMatterRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "no-meta.md")
 	writeFile(t, p, "just a body, nothing else\n")
 
-	a, err := NewArticle(p, ARTICLE, "/post")
+	a, err := ParseFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Title != "no-meta" {
-		t.Errorf("title default = %q, want %q", a.Title, "no-meta")
-	}
-	if a.Id == "" || a.URL == "" || a.CreateTime == "" {
-		t.Errorf("expected defaulted id/url/create_time, got %+v", a.Meta)
+	a.Title = "no-meta"
+	a.CreateTime = "2026-04-25 09:00:00"
+	a.Id = "abc123"
+	a.URL = "/post/abc123"
+	if err := RewriteFrontMatter(a); err != nil {
+		t.Fatal(err)
 	}
 
-	// File on disk must now begin with --- and round-trip through the parser.
 	got, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
@@ -80,12 +83,13 @@ func TestNewArticleFillsMissingMetaAndRewrites(t *testing.T) {
 	if !startsWith(got, "---\n") {
 		t.Errorf("file does not start with front-matter block:\n%s", got)
 	}
-	a2, err := NewArticle(p, ARTICLE, "/post")
+
+	a2, err := ParseFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a2.Title != a.Title || a2.Id != a.Id || a2.URL != a.URL {
-		t.Errorf("front matter not stable across rewrites: before=%+v after=%+v", a.Meta, a2.Meta)
+	if a2.Title != a.Title || a2.Id != a.Id || a2.URL != a.URL || a2.CreateTime != a.CreateTime {
+		t.Errorf("round-trip lost data: before=%+v after=%+v", a.Meta, a2.Meta)
 	}
 }
 
