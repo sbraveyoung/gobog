@@ -11,16 +11,67 @@ perm="0755"                 #permission
 [http]
 cert="${YOUR_CERT_PATH}/1_sbrave.cn_bundle.crt"
 key="${YOUR_CERT_PATH}/2_sbrave.cn.key"
-# listen 80 address needs root permission
+# listening on 80/443 needs root or `setcap cap_net_bind_service=+ep ./gobog`.
 addr=":80"
 addrs=":443"
+# When true and a TLS keypair is configured, plain HTTP is replaced with a
+# 301 redirector to HTTPS. Defaults to false (HTTP and HTTPS both serve).
+redirect_tls=false
 
 [blog]
 domain="https://sbrave.cn"
 title="smart的个人博客"
 subtitle="代码分享专栏"
 description="阅读·实践·分享"
---description="Stay hungry,stay foolish."
 author="smart"
 theme="themes/simple"
 source="${YOUR_SOURCE_PATH}"
+# URL generation strategy. The scan itself is always recursive over <source>.
+#   - "vault"  (default) — slugified relative path: /post/tech/http
+#   - "legacy" — original gobog scheme: /post/<crc32(parent)>/<crc32(body)>
+# Articles whose front-matter already has `url:` keep that URL regardless.
+layout="vault"
+# Top-level directories to skip in vault mode. Case-insensitive on basename.
+# Useful for excluding template folders, drafts, attachments, etc.
+exclude_dirs=[]
+# Optional: written to <export>/CNAME when running `gobog -export`.
+cname="sbrave.cn"
+# Optional: include articles whose front-matter has `draft: true`.
+include_drafts=false
+# Optional: include articles whose front-matter has `hidden: true`. Hidden is
+# semantically distinct from draft (temporarily off vs. work in progress) but
+# behaves the same way: dropped from listings + sitemap + atom unless this
+# flag is on.
+include_hidden=false
+
+# Auth gates two things: viewing notes that have `private: true` in their
+# front-matter, and creating new code snippets via POST /snippet. When either
+# field below is empty, both endpoints fail closed with 503. Generate the
+# hash with: printf 'your-password' | sha256sum
+[auth]
+username=""
+password_hash=""
+realm="gobog"
+
+# Mutable server state (view counts, shared snippets, watermark cache,
+# backups) lives here. Defaults to ./gobog-data when blank. Static export
+# does not use this directory.
+[data]
+dir="./gobog-data"
+
+# Optional: overlay a text watermark on JPEG / PNG responses from /image/.
+# Leave watermark_text blank to disable. Watermarked output is cached on
+# disk under <data>/wm-cache/, keyed by source path + mtime + watermark
+# text + position so config edits invalidate stale cache entries.
+[image]
+watermark_text=""
+watermark_position="bottom-right"  # top-left | top-right | bottom-left | bottom-right | center
+
+# Optional: periodic tar.gz backup of [blog].source. The worker runs once
+# at startup, then on the ticker. dir defaults to <data>/backups; keep is
+# the rotation count (newest N archives kept, the rest deleted).
+[backup]
+enabled=false
+interval="1h"
+dir=""
+keep=7

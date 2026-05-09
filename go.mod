@@ -1,10 +1,9 @@
-module github.com/SmartBrave/gobog
+module github.com/sbraveyoung/gobog
 
 go 1.16
 
 require (
 	github.com/BurntSushi/toml v0.4.1
-	github.com/SmartBrave/utils v0.0.0-20210713122451-7fadf9f7b19e
 	github.com/astaxie/beego v1.12.3
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/facebookarchive/grace v0.0.0-20180706040059-75cf19382434
@@ -16,6 +15,7 @@ require (
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/stats v0.0.0-20151006221625-1b76add642e4 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
-	github.com/prometheus/common v0.10.0
-	github.com/russross/blackfriday v1.6.0
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
+	github.com/yuin/goldmark v1.4.15
+	golang.org/x/image v0.5.0 // indirect
 )

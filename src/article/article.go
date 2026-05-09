@@ -7,18 +7,14 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
-	pathpkg "path"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/astaxie/beego/logs"
-)
-
-const (
-	ARTICLE = "article"
-	DIR     = "dir"
 )
 
 const (
@@ -28,31 +24,121 @@ const (
 	META_END
 )
 
-const (
-	TIME_LAYOUT = "2006-01-02 15:04:05"
-)
+const TIME_LAYOUT = "2006-01-02 15:04:05"
+const wordsPerMinute = 250
 
-const (
-//Category
-)
-
-//front-matter: https://jekyllrb.com/docs/front-matter/
+// Meta is the front-matter struct. All fields stay string-typed because the
+// reflective rewriter formats values as plain text.
 type Meta struct {
 	Title         string `meta:"title"`
 	Description   string `meta:"description"`
 	Author        string `meta:"author"`
 	CreateTime    string `meta:"create_time"`
 	Category      string `meta:"category"`
+	TagsRaw       string `meta:"tags"`
 	Id            string `meta:"id"`
 	URL           string `meta:"url"`
+	Draft         string `meta:"draft"`
+	// Pin sticks an article to the top of its containing listing,
+	// overriding the usual create_time descending order.
+	Pin string `meta:"pin"`
+	// Private articles still appear in indexes but their body is gated
+	// by HTTP Basic auth (see config [auth]). Lists show title + URL,
+	// no Summary leak.
+	Private string `meta:"private"`
+	// Hidden articles are dropped from listings entirely (like Draft) but
+	// the URL keeps resolving — useful for "temporarily off" rather than
+	// "work in progress". Toggle via [blog].include_hidden.
+	Hidden string `meta:"hidden"`
+	// AI marks an AI-generated / -assisted post. Truthy values (true / 1 /
+	// yes / on) render a generic "AI" badge; any other non-empty string
+	// is treated as the model name and shown verbatim ("claude", "gpt-4o").
+	AI string `meta:"ai"`
+	// Cover is an optional hero image — relative path resolved against the
+	// blog's image index, or an absolute URL. Renders at the top of the
+	// post page and is also used for OG meta.
+	Cover         string `meta:"cover"`
 	TyporaRootURL string `meta:"typora-root-url"`
 }
 
 type Article struct {
 	Meta
-	Content    []byte
-	Parse      string
-	SubArticle Articles
+	Source         string
+	Content        []byte
+	Parse          string
+	Tags           []string
+	Summary        string
+	WordCount      int
+	ReadingTimeMin int
+	SubArticle     Articles
+
+	parsedHTML atomic.Value
+}
+
+func (a *Article) CachedHTML() (string, bool) {
+	if v := a.parsedHTML.Load(); v != nil {
+		return v.(string), true
+	}
+	return "", false
+}
+
+func (a *Article) StoreHTML(html string) { a.parsedHTML.Store(html) }
+
+// IsDraft reports whether front-matter marks this article as a draft.
+func (a *Article) IsDraft() bool { return truthy(a.Draft) }
+
+// IsPinned sticks the article to the top of its containing listing,
+// overriding create_time order.
+func (a *Article) IsPinned() bool { return truthy(a.Pin) }
+
+// IsPrivate gates the article body behind HTTP Basic auth.
+func (a *Article) IsPrivate() bool { return truthy(a.Private) }
+
+// IsHidden drops the article from listings entirely (URL keeps resolving).
+func (a *Article) IsHidden() bool { return truthy(a.Hidden) }
+
+// IsAI reports whether the front-matter marks this article as AI-generated.
+// A truthy value (true / 1 / yes / on) counts; any other non-empty,
+// non-falsy string is treated as the model name and also counts. Explicit
+// false / 0 / no / off return false so authors can write `ai: false` to
+// mean "I wrote this myself".
+func (a *Article) IsAI() bool {
+	v := strings.ToLower(strings.TrimSpace(a.AI))
+	if v == "" {
+		return false
+	}
+	switch v {
+	case "false", "0", "no", "off":
+		return false
+	}
+	return true
+}
+
+// AILabel returns the human-facing badge text. For truthy keywords it
+// returns "AI"; otherwise the verbatim trimmed value (so "claude" renders
+// as "🤖 claude" while `ai: true` renders as just "🤖 AI"). Returns "" when
+// IsAI is false.
+func (a *Article) AILabel() string {
+	if !a.IsAI() {
+		return ""
+	}
+	v := strings.TrimSpace(a.AI)
+	if truthy(v) {
+		return "AI"
+	}
+	return v
+}
+
+func (a *Article) IsGroup() bool { return len(a.SubArticle) > 0 }
+
+// truthy interprets common YAML-ish booleans (true / 1 / yes / on, any case)
+// as true; everything else (including empty) is false.
+func truthy(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes", "on":
+		return true
+	}
+	return false
 }
 
 type Articles []*Article
@@ -60,11 +146,16 @@ type Articles []*Article
 func (a Articles) Len() int      { return len(a) }
 func (a Articles) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a Articles) Less(i, j int) bool {
+	// Groups (directories) before leaves so navigation stays stable.
 	if a[i].SubArticle == nil && a[j].SubArticle != nil {
 		return false
 	}
 	if a[i].SubArticle != nil && a[j].SubArticle == nil {
 		return true
+	}
+	// Pinned articles bubble to the top within the same kind.
+	if a[i].IsPinned() != a[j].IsPinned() {
+		return a[i].IsPinned()
 	}
 	ti, erri := time.Parse(TIME_LAYOUT, a[i].CreateTime)
 	tj, errj := time.Parse(TIME_LAYOUT, a[j].CreateTime)
@@ -74,134 +165,286 @@ func (a Articles) Less(i, j int) bool {
 	return ti.Unix() > tj.Unix()
 }
 
-func NewArticle(path, articleType, fatherURL string) (*Article, error) {
-	logs.Debug("in NewArticles,path:", path, " articleType:", articleType, " fatherURL:", fatherURL)
-	article := &Article{}
+// ParseFile reads the markdown at path and returns an Article populated from
+// front-matter + body. Does NOT touch the file on disk and does NOT default
+// missing meta — callers fill URL/Id/Title/CreateTime derivatively from the
+// path (and may persist the result back via RewriteFrontMatter).
+func ParseFile(path string) (*Article, error) {
+	logs.Debug("parse:", path)
+	a := &Article{Source: path}
 
-	if articleType == DIR {
-		article.Title = pathpkg.Base(path)
-		article.CreateTime = time.Now().Format(TIME_LAYOUT)
-		article.Id = calcID([]byte(article.Title))
-		article.URL = fmt.Sprintf("%s/%s", fatherURL, article.Id)
-		return article, nil
-	}
-
-	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	f, err := os.Open(path)
 	if err != nil {
-		logs.Error("open error:", err, " path:", path)
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if err := parseInto(a, bufio.NewReader(f)); err != nil {
 		return nil, err
 	}
 
-	reader := bufio.NewReader(file)
+	finalizeDerived(a)
+	return a, nil
+}
+
+// RewriteFrontMatter persists a.Meta back to a.Source. It opens the source
+// file with O_RDWR, seeks to 0, truncates and writes a fresh `---`-delimited
+// header followed by a.Content. Caller is responsible for ensuring a.Source
+// is set and that a.Content is the body without front-matter (which is what
+// ParseFile leaves you with).
+//
+// Used by the blog scanner to persist auto-generated id/url/title/create_time
+// the first time it sees a note — the original gobog behavior, retained as
+// product design.
+func RewriteFrontMatter(a *Article) error {
+	if a.Source == "" {
+		return fmt.Errorf("rewrite: article has no source path")
+	}
+	file, err := os.OpenFile(a.Source, os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", a.Source, err)
+	}
+	defer file.Close()
+	return rewriteFrontMatter(file, a)
+}
+
+// parseInto reads YAML-ish front-matter + body into a, leaving derived fields
+// (Tags, Summary, WordCount) for finalizeDerived.
+func parseInto(a *Article, reader *bufio.Reader) error {
 	stat := START
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err == io.EOF {
+			if len(line) > 0 && stat != META_BEGIN {
+				a.Content = append(a.Content, line...)
+			}
 			break
 		}
 		if err != nil {
-			logs.Error("readbytes err:", err)
-			return nil, err
+			return fmt.Errorf("read: %w", err)
 		}
 
 		switch stat {
 		case START:
-			//FIXME: can not use "---" for line in markdown, could use "***" instead.
 			if strings.HasPrefix(string(line), "---") {
 				stat = META_BEGIN
 			} else {
 				stat = NO_META
-				article.Content = append(article.Content, line...)
+				a.Content = append(a.Content, line...)
 			}
 		case NO_META:
-			article.Content = append(article.Content, line...)
+			a.Content = append(a.Content, line...)
 		case META_BEGIN:
 			if strings.HasPrefix(string(line), "---") {
 				stat = META_END
-			} else {
-				slice := bytes.Split(line, []byte(":"))
-				if len(slice) < 2 {
-					//log.warn
+				continue
+			}
+			slice := bytes.SplitN(line, []byte(":"), 2)
+			if len(slice) < 2 {
+				continue
+			}
+			key := strings.TrimSpace(string(slice[0]))
+			value := strings.TrimSpace(string(slice[1]))
+			// Obsidian writes tags as a YAML array (`tags: [a, b]`). Strip
+			// the brackets so parseTags sees a clean comma list.
+			if key == "tags" {
+				value = strings.TrimPrefix(value, "[")
+				value = strings.TrimSuffix(value, "]")
+			}
+			v := reflect.ValueOf(&(a.Meta)).Elem()
+			for i := 0; i < v.NumField(); i++ {
+				field := v.Type().Field(i)
+				tagName := field.Tag.Get("meta")
+				if tagName == "" {
+					tagName = strings.ToLower(field.Name)
 				}
-				key := strings.TrimSpace(string(slice[0]))
-				value := strings.TrimSpace(string(bytes.Join(slice[1:], []byte{})))
-
-				v := reflect.ValueOf(&(article.Meta)).Elem()
-				for i := 0; i < v.NumField(); i++ {
-					field := v.Type().Field(i)
-					tagName := field.Tag.Get("meta")
-					if tagName == "" {
-						tagName = strings.ToLower(field.Name)
-					}
-
-					if tagName == key {
-						v.FieldByName(field.Name).Set(reflect.ValueOf(value))
-					}
+				if tagName == key {
+					v.FieldByName(field.Name).Set(reflect.ValueOf(value))
 				}
 			}
 		case META_END:
-			article.Content = append(article.Content, line...)
-		default:
-			//XXX
+			a.Content = append(a.Content, line...)
 		}
 	}
+	return nil
+}
 
-	metaUpdated := false
-	if article.Title == "" {
-		metaUpdated = true
-		article.Title = pathpkg.Base(path)
-		article.Title = strings.TrimRight(article.Title, ".md")
+func rewriteFrontMatter(file *os.File, a *Article) error {
+	if _, err := file.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek: %w", err)
 	}
-	if article.CreateTime == "" {
-		metaUpdated = true
-		article.CreateTime = time.Now().Format(TIME_LAYOUT)
+	if err := file.Truncate(0); err != nil {
+		return fmt.Errorf("truncate: %w", err)
 	}
-	if article.Id == "" {
-		metaUpdated = true
-		article.Id = calcID(article.Content)
+	w := bufio.NewWriter(file)
+	out := []byte("---\n")
+	v := reflect.ValueOf(&(a.Meta)).Elem()
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Type().Field(i)
+		out = append(out, []byte(field.Tag.Get("meta")+": "+v.FieldByName(field.Name).String()+"\n")...)
 	}
-	if article.URL == "" {
-		metaUpdated = true
-		article.URL = fmt.Sprintf("%s/%s", fatherURL, article.Id)
+	out = append(out, []byte("---\n")...)
+	out = append(out, a.Content...)
+	if _, err := w.Write(out); err != nil {
+		return err
 	}
+	return w.Flush()
+}
 
-	_, err = file.Seek(0, 0)
-	if err != nil {
-		logs.Error("seek err:", err)
-		return nil, err
+func finalizeDerived(a *Article) {
+	a.Tags = parseTags(a.TagsRaw)
+	a.WordCount = countWords(a.Content)
+	if a.WordCount > 0 {
+		a.ReadingTimeMin = (a.WordCount + wordsPerMinute - 1) / wordsPerMinute
 	}
-
-	if metaUpdated {
-		writeString := []byte{}
-		writer := bufio.NewWriter(file)
-		writeString = append(writeString, []byte("---\n")...)
-		v := reflect.ValueOf(&(article.Meta)).Elem()
-		for i := 0; i < v.NumField(); i++ {
-			field := v.Type().Field(i)
-			tagName := field.Tag.Get("meta")
-			tagValue := v.FieldByName(field.Name).String()
-			writeString = append(writeString, []byte(tagName+": "+tagValue+"\n")...)
-		}
-		writeString = append(writeString, []byte("---\n")...)
-		writeString = append(writeString, article.Content...)
-		fmt.Println("writeString:", string(writeString))
-		_, err = writer.WriteString(string(writeString))
-		if err != nil {
-			logs.Error("writeString err:", err)
-			return nil, err
-		}
-		err = writer.Flush()
-		if err != nil {
-			logs.Error("flush err:", err)
-			return article, err
-		}
+	if a.Description != "" {
+		a.Summary = a.Description
+	} else {
+		a.Summary = bodySummary(a.Content, 160)
 	}
-	file.Close()
-	return article, nil
 }
 
 func calcID(data []byte) string {
 	ieee := crc32.NewIEEE()
 	ieee.Write(data)
 	return strconv.FormatUint(uint64(ieee.Sum32()), 16)
+}
+
+// Slugify returns a kebab-case ASCII slug for s. If the result is empty (e.g.
+// CJK-only input), Slugify returns the empty string and the caller should fall
+// back to a hash.
+func Slugify(s string) string {
+	var b strings.Builder
+	prevDash := true
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r + 32)
+			prevDash = false
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		case r == '-' || r == '_' || r == ' ' || r == '.':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		default:
+			// drop everything else (punctuation, CJK, ...)
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	return out
+}
+
+// SlugOrHash returns Slugify(s) if non-empty, else a stable hex hash.
+func SlugOrHash(s string) string {
+	if slug := Slugify(s); slug != "" {
+		return slug
+	}
+	return calcID([]byte(s))
+}
+
+// CalcID exposes the body-content hash for callers that want a stable id.
+func CalcID(data []byte) string { return calcID(data) }
+
+func parseTags(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		t = strings.TrimPrefix(t, "#") // accept Obsidian #tag form too
+		t = strings.Trim(t, `"' `)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func countWords(content []byte) int {
+	count := 0
+	inWord := false
+	for _, r := range string(content) {
+		if isCJK(r) {
+			count++
+			inWord = false
+			continue
+		}
+		if unicode.IsSpace(r) {
+			inWord = false
+			continue
+		}
+		if !inWord {
+			count++
+			inWord = true
+		}
+	}
+	return count
+}
+
+func isCJK(r rune) bool {
+	switch {
+	case r >= 0x4E00 && r <= 0x9FFF:
+		return true
+	case r >= 0x3400 && r <= 0x4DBF:
+		return true
+	case r >= 0x3040 && r <= 0x30FF:
+		return true
+	case r >= 0xAC00 && r <= 0xD7AF:
+		return true
+	}
+	return false
+}
+
+func bodySummary(content []byte, maxRunes int) string {
+	var b strings.Builder
+	skipBlock := false
+	for _, line := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			skipBlock = !skipBlock
+			continue
+		}
+		if skipBlock || trimmed == "" {
+			continue
+		}
+		trimmed = strings.TrimLeft(trimmed, "#>*-+ \t")
+		if trimmed == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString(trimmed)
+		if utf8RuneLen(b.String()) >= maxRunes {
+			break
+		}
+	}
+	return truncateRunes(b.String(), maxRunes)
+}
+
+func utf8RuneLen(s string) int {
+	n := 0
+	for range s {
+		n++
+	}
+	return n
+}
+
+func truncateRunes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }

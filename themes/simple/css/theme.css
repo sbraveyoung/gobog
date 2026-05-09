@@ -1,0 +1,585 @@
+/* gobog theme.css — overrides loaded after main.css/home.css.
+ *
+ * Drops the Bootstrap 3 navbar, replaces UA-sniffing with media queries,
+ * adds reading progress bar, post TOC, hero cover, listing summary,
+ * code fold, and a print stylesheet. CSS variables drive light/dark.
+ */
+
+:root {
+    --gobog-bg: #ffffff;
+    --gobog-fg: #1a1a1a;
+    --gobog-muted: #6a6a6a;
+    --gobog-link: #1d6dde;
+    --gobog-card-bg: #f7f7f8;
+    --gobog-border: #e0e0e0;
+    --gobog-code-bg: #f3f3f3;
+    --gobog-pin-bg: #fff7d8;
+    --gobog-pin-fg: #5a4500;
+    --gobog-priv-bg: #fde2e2;
+    --gobog-priv-fg: #6a1818;
+    --gobog-header-bg: rgba(255, 255, 255, 0.92);
+    --gobog-progress: #6c7cff;
+    --gobog-content-w: 76ch;
+    --gobog-header-h: 56px;
+}
+
+[data-theme="dark"] {
+    --gobog-bg: #181a1c;
+    --gobog-fg: #e6e6e6;
+    --gobog-muted: #9a9a9a;
+    --gobog-link: #6db1ff;
+    --gobog-card-bg: #23262b;
+    --gobog-border: #2f3338;
+    --gobog-code-bg: #15171a;
+    --gobog-pin-bg: #4a3c00;
+    --gobog-pin-fg: #ffe8a3;
+    --gobog-priv-bg: #4a1818;
+    --gobog-priv-fg: #ffcfcf;
+    --gobog-header-bg: rgba(24, 26, 28, 0.92);
+}
+
+[data-theme="dark"] body {
+    background: var(--gobog-bg);
+    color: var(--gobog-fg);
+}
+
+[data-theme="dark"] a {
+    color: var(--gobog-link);
+}
+
+/* ----- Layout: body padding so the fixed header doesn't overlap content ----- */
+
+html { scroll-behavior: smooth; }
+
+body {
+    padding-top: var(--gobog-header-h);
+    font-size: 17px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ----- Custom header (replaces Bootstrap 3 navbar) ----- */
+
+.site-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--gobog-header-h);
+    background: var(--gobog-header-bg);
+    backdrop-filter: saturate(180%) blur(10px);
+    -webkit-backdrop-filter: saturate(180%) blur(10px);
+    border-bottom: 1px solid var(--gobog-border);
+    z-index: 1000;
+}
+
+.site-header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 18px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.site-brand {
+    font-weight: 600;
+    color: var(--gobog-fg);
+    text-decoration: none;
+    font-size: 17px;
+    flex-shrink: 0;
+}
+
+.site-nav {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-left: auto;
+}
+
+.site-search {
+    display: flex;
+    gap: 6px;
+}
+
+.site-search input {
+    padding: 5px 12px;
+    border: 1px solid var(--gobog-border);
+    border-radius: 16px;
+    background: var(--gobog-bg);
+    color: var(--gobog-fg);
+    font: inherit;
+    font-size: 14px;
+    width: 200px;
+    max-width: 32vw;
+}
+
+.site-search button {
+    padding: 5px 10px;
+    border: 1px solid var(--gobog-border);
+    border-radius: 16px;
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    cursor: pointer;
+}
+
+.site-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 14px;
+}
+
+.site-links a {
+    color: var(--gobog-fg);
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.site-links a.is-active,
+.site-links a:hover {
+    color: var(--gobog-link);
+}
+
+/* home.css ships a global `button { position: absolute }` from the old
+ * navbar — overrule it for every button this theme owns so they sit where
+ * their flex / parent-relative positioning expects.
+ */
+.nav-toggle,
+.site-search button,
+.site-links button {
+    position: static;
+}
+
+.nav-toggle {
+    display: none;
+    margin-left: auto;
+    background: transparent;
+    border: 0;
+    color: var(--gobog-fg);
+    font-size: 22px;
+    cursor: pointer;
+    padding: 6px 10px;
+    width: auto;
+    height: auto;
+}
+
+@media (max-width: 720px) {
+    .nav-toggle { display: block; }
+    .site-nav {
+        position: fixed;
+        top: var(--gobog-header-h);
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        background: var(--gobog-bg);
+        border-bottom: 1px solid var(--gobog-border);
+        padding: 0 18px;
+        max-height: 0;
+        overflow: hidden;
+        box-sizing: border-box;
+        transition: max-height .2s ease, padding .2s ease;
+    }
+    .site-nav.is-open {
+        max-height: 60vh;
+        padding: 12px 18px 18px;
+    }
+    .site-search { width: 100%; }
+    .site-search input { width: 100%; max-width: none; flex: 1; }
+    .site-links {
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 12px;
+    }
+    .site-links a { display: block; padding: 8px 0; }
+}
+
+/* ----- Reading progress bar ----- */
+
+#reading-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gobog-progress);
+    transform-origin: 0 50%;
+    transform: scaleX(0);
+    z-index: 1100;
+    pointer-events: none;
+}
+
+/* ----- Post page layout: TOC sidebar + readable column ----- */
+
+.post-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 18px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+}
+
+@media (min-width: 1100px) {
+    .post-page { grid-template-columns: 240px minmax(0, 1fr); }
+    .post-page .inner { grid-column: 2; }
+    .post-toc { grid-column: 1; grid-row: 1; }
+}
+
+.post-page .inner {
+    max-width: var(--gobog-content-w);
+    margin: 0 auto;
+}
+
+.post-toc {
+    position: sticky;
+    top: calc(var(--gobog-header-h) + 16px);
+    align-self: start;
+    font-size: 14px;
+    max-height: calc(100vh - var(--gobog-header-h) - 32px);
+    overflow-y: auto;
+    color: var(--gobog-muted);
+}
+
+.post-toc h2 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--gobog-muted);
+    margin: 0 0 8px;
+}
+
+.post-toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid var(--gobog-border);
+}
+
+.post-toc li {
+    padding: 2px 0 2px 12px;
+    line-height: 1.4;
+}
+
+.post-toc li.toc-h3 { padding-left: 24px; }
+.post-toc a { color: var(--gobog-muted); text-decoration: none; }
+.post-toc a:hover { color: var(--gobog-link); }
+
+@media (max-width: 1099px) {
+    .post-toc { display: none; }
+}
+
+/* ----- Hero cover image ----- */
+
+.post-cover {
+    display: block;
+    width: 100%;
+    max-height: 360px;
+    object-fit: cover;
+    border-radius: 6px;
+    margin: 0 0 22px;
+}
+
+/* ----- Post meta bar (above body) ----- */
+
+.post-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    align-items: center;
+    margin: 0 0 1.4em 0;
+    padding-bottom: 0.8em;
+    border-bottom: 1px solid var(--gobog-border);
+    color: var(--gobog-muted);
+    font-size: 0.9em;
+}
+
+.post-meta .meta-item { white-space: nowrap; }
+
+.post-meta .meta-tag {
+    background: var(--gobog-card-bg);
+    border: 1px solid var(--gobog-border);
+    border-radius: 12px;
+    padding: 1px 10px;
+    color: var(--gobog-link);
+    text-decoration: none;
+    font-size: 0.85em;
+}
+
+.post-meta .meta-tag:hover {
+    background: var(--gobog-link);
+    color: var(--gobog-bg);
+    border-color: var(--gobog-link);
+}
+
+/* ----- Badges (pin / private / AI / group) ----- */
+
+.badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.badge-pinned, .badge-pin { background: var(--gobog-pin-bg); color: var(--gobog-pin-fg); }
+.badge-private, .badge-priv { background: var(--gobog-priv-bg); color: var(--gobog-priv-fg); }
+.badge-group { margin-left: 8px; color: var(--gobog-muted); font-size: 0.85em; }
+
+.badge-ai {
+    background: linear-gradient(90deg, #6c7cff 0%, #9650ff 100%);
+    color: #fff;
+    border: 0;
+    padding: 1px 9px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    box-shadow: 0 1px 3px rgba(108, 124, 255, 0.25);
+}
+
+.post-item .badge-ai {
+    position: absolute;
+    top: 14px;
+    right: 18px;
+}
+
+[data-theme="dark"] .badge-ai {
+    box-shadow: 0 1px 3px rgba(150, 80, 255, 0.4);
+}
+
+/* ----- Theme toggle ----- */
+
+.theme-toggle {
+    position: fixed;
+    bottom: 18px;
+    right: 18px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 1050;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.theme-toggle:hover { transform: scale(1.05); }
+
+/* ----- Code blocks: copy button + fold ----- */
+
+pre.code-block {
+    position: relative;
+    background: var(--gobog-code-bg);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+
+pre.code-block .copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 4px;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+pre.code-block:hover .copy-btn { opacity: 1; }
+
+pre.foldable.is-folded {
+    max-height: 14em;
+    overflow: hidden;
+    position: relative;
+}
+
+pre.foldable.is-folded::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4em;
+    background: linear-gradient(to bottom, transparent, var(--gobog-code-bg));
+}
+
+pre.foldable .fold-btn {
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 14px;
+    font-size: 12px;
+    border-radius: 14px;
+    border: 1px solid var(--gobog-border);
+    background: var(--gobog-card-bg);
+    color: var(--gobog-fg);
+    cursor: pointer;
+    z-index: 1;
+}
+
+pre.foldable:not(.is-folded) {
+    padding-bottom: 36px;
+}
+
+[data-theme="dark"] pre,
+[data-theme="dark"] code {
+    background-color: var(--gobog-code-bg);
+    color: #e6edf3;
+}
+
+/* ----- Article body typography ----- */
+
+.inner h2, .inner h3 {
+    margin-top: 1.6em;
+    margin-bottom: .6em;
+    line-height: 1.25;
+}
+
+.inner img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
+
+.inner blockquote {
+    border-left: 3px solid var(--gobog-border);
+    padding-left: 14px;
+    margin: 1.2em 0;
+    color: var(--gobog-muted);
+}
+
+.inner table {
+    border-collapse: collapse;
+    margin: 1.2em 0;
+    width: 100%;
+}
+
+.inner th, .inner td {
+    border: 1px solid var(--gobog-border);
+    padding: 6px 12px;
+}
+
+/* ----- Homepage list (replaces Bootstrap list-group) ----- */
+
+.outer {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px 18px;
+}
+
+.post-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.post-item {
+    position: relative;
+    padding: 18px 18px;
+    border: 1px solid var(--gobog-border);
+    border-radius: 8px;
+    margin-bottom: 14px;
+    background: var(--gobog-bg);
+}
+
+.post-item.is-pinned {
+    border-color: var(--gobog-pin-fg);
+}
+
+.post-item-title {
+    margin: 0;
+    font-size: 1.15em;
+    line-height: 1.35;
+    padding-right: 100px; /* leave room for AI badge */
+}
+
+.post-item-title a {
+    color: var(--gobog-fg);
+    text-decoration: none;
+}
+
+.post-item-title a:hover {
+    color: var(--gobog-link);
+}
+
+.post-item-summary {
+    margin: 8px 0 6px;
+    color: var(--gobog-muted);
+    font-size: 0.95em;
+    line-height: 1.55;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.post-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 8px;
+    color: var(--gobog-muted);
+    font-size: 0.82em;
+}
+
+.post-item-tag {
+    color: var(--gobog-link);
+    text-decoration: none;
+    background: var(--gobog-card-bg);
+    border: 1px solid var(--gobog-border);
+    border-radius: 10px;
+    padding: 0 8px;
+    font-size: 0.95em;
+}
+
+.post-item-tag:hover {
+    background: var(--gobog-link);
+    color: var(--gobog-bg);
+}
+
+/* ----- Footer ----- */
+
+.site-footer {
+    text-align: center;
+    color: var(--gobog-muted);
+    font-size: 13px;
+    padding: 36px 0 24px;
+    border-top: 1px solid var(--gobog-border);
+    margin-top: 48px;
+}
+
+/* ----- Print styles ----- */
+
+@media print {
+    body { padding-top: 0; font-size: 12pt; color: #000; background: #fff; }
+    .site-header,
+    .site-footer,
+    .theme-toggle,
+    #reading-progress,
+    .post-toc,
+    .copy-btn,
+    .fold-btn,
+    .post-meta .meta-tag { display: none !important; }
+    .post-page { display: block; padding: 0; }
+    .post-page .inner { max-width: none; }
+    a, a:visited { color: #000; text-decoration: underline; }
+    pre, code { background: #f4f4f4 !important; color: #000 !important; border: 1px solid #ccc; }
+    pre.foldable.is-folded { max-height: none !important; }
+    pre.foldable.is-folded::after { display: none; }
+}
