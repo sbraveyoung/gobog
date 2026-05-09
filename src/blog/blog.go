@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	articlepkg "github.com/sbraveyoung/gobog/src/article"
-	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/astaxie/beego/logs"
 	"github.com/fsnotify/fsnotify"
+	articlepkg "github.com/sbraveyoung/gobog/src/article"
+	"github.com/sbraveyoung/gobog/src/config"
 )
 
 // BlogTypes maps a logical type to the URL prefix used in routes / templates.
@@ -163,7 +163,7 @@ func (b *BlogST) Reload() error {
 	articles := make(map[string]articlepkg.Articles)
 	wiki := newWikiIndex()
 
-	posts, err := loadDir(source, source, "/post", true)
+	posts, err := loadDir(filepath.Join(source, BlogTypes["post"]), source, "/post", true)
 	if err != nil {
 		return err
 	}
