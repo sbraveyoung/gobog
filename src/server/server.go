@@ -29,7 +29,10 @@ var server = &Server{}
 // Run is the entrypoint for the HTTP servers. It blocks. Used by main.go when
 // not running in static-export mode.
 func Run() error {
-	initViewStore()
+	// View-count tracking has been retired: the per-article 👀 metric was
+	// never load-bearing and added a moving part (sync.Map flush goroutine,
+	// JSON file under <data>) that the new theme deliberately doesn't show.
+	// initViewStore() is no longer called; views.go is kept for tests only.
 	startBackupWorker(make(chan struct{})) // never stopped; gracehttp owns the lifecycle
 
 	// Try to load the TLS keypair upfront. Missing or unreadable files
@@ -99,9 +102,10 @@ func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) newHandler() http.Handler {
 	mux := http.NewServeMux()
+	// Catch-all "/" handles the home page AND any /<page-slug> registered
+	// under <source>/pages/. Specific routes below take precedence.
 	mux.HandleFunc("/", logMiddle(rootHandler))
 	mux.HandleFunc("/post/", logMiddle(postHandler))
-	mux.HandleFunc("/about", logMiddle(aboutHandler))
 	mux.HandleFunc("/tag/", logMiddle(tagHandler))
 	mux.HandleFunc("/search", logMiddle(searchHandler))
 	mux.HandleFunc("/atom.xml", logMiddle(atomHandler))
@@ -125,19 +129,29 @@ func logMiddle(f func(w http.ResponseWriter, r *http.Request)) func(w http.Respo
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		notFound(w, r)
+	if r.URL.Path == "/" {
+		t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+		if err != nil {
+			logs.Error("parse index template:", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		view := newIndexView(blog.Blog.Groups())
+		if err := t.Execute(w, view); err != nil {
+			logs.Error("exec index template:", err)
+		}
 		return
 	}
-	t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
-	if err != nil {
-		logs.Error("parse index template:", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	// Top-level pages (e.g. pages/about.md → /about). These are matched
+	// last so reserved routes like /post/, /tag/, /atom.xml win first.
+	pages := blog.Blog.Articles(blog.BlogTypes["page"])
+	for _, p := range pages {
+		if p.URL == r.URL.Path {
+			renderPost(w, r, p)
+			return
+		}
 	}
-	if err := t.Execute(w, blog.Blog.Groups()); err != nil {
-		logs.Error("exec index template:", err)
-	}
+	notFound(w, r)
 }
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +168,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	if len(matched.SubArticle) == 0 {
 		renderPost(w, r, matched)
 	} else {
-		renderGroup(w, matched.SubArticle)
+		renderGroup(w, matched, matched.SubArticle)
 	}
 }
 
@@ -212,34 +226,32 @@ func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Arti
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if views != nil {
-		views.Increment(article.URL)
-	}
 	view := newArticleView(article, parse, config.C.Blog.Domain)
 	if err := t.Execute(w, view); err != nil {
 		logs.Warn("exec post template:", err)
 	}
 }
 
-func renderGroup(w http.ResponseWriter, list articlepkg.Articles) {
-	t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+// renderGroup uses the theme's group.html when present, falling back to
+// index.html so older themes (and themes still tracking the original gobog
+// layout) keep working. Group pages get a richer view: title (group name),
+// breadcrumb, sub-articles list — index.html only ever sees the top-level
+// groups, so reusing it for a sub-group landing was always a half-fit.
+func renderGroup(w http.ResponseWriter, group *articlepkg.Article, list articlepkg.Articles) {
+	tplPath := config.C.Blog.Theme + "/group.html"
+	if _, err := os.Stat(tplPath); os.IsNotExist(err) {
+		tplPath = config.C.Blog.Theme + "/index.html"
+	}
+	t, err := template.ParseFiles(tplPath)
 	if err != nil {
 		logs.Warn("parse group template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if err := t.Execute(w, list); err != nil {
+	view := newGroupView(group, list)
+	if err := t.Execute(w, view); err != nil {
 		logs.Warn("exec group template:", err)
 	}
-}
-
-func aboutHandler(w http.ResponseWriter, r *http.Request) {
-	list := blog.Blog.Articles(blog.BlogTypes["about"])
-	if len(list) == 0 {
-		notFound(w, r)
-		return
-	}
-	renderPost(w, r, list[0])
 }
 
 func tagHandler(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +274,10 @@ func tagHandler(w http.ResponseWriter, r *http.Request) {
 		notFound(w, r)
 		return
 	}
-	renderGroup(w, posts)
+	synthetic := &articlepkg.Article{}
+	synthetic.Title = "#" + tag
+	synthetic.URL = "/tag/" + tag
+	renderGroup(w, synthetic, posts)
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -276,7 +291,10 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		writeSyntheticPost(w, "Search: "+q, "<p>No matching posts.</p>")
 		return
 	}
-	renderGroup(w, results)
+	synthetic := &articlepkg.Article{}
+	synthetic.Title = "Search: " + q
+	synthetic.URL = "/search?query=" + q
+	renderGroup(w, synthetic, results)
 }
 
 func searchPosts(query string) articlepkg.Articles {
@@ -376,35 +394,40 @@ func safeServeFile(w http.ResponseWriter, r *http.Request, root, prefix string) 
 }
 
 func imageHandler(w http.ResponseWriter, r *http.Request) {
-	// First try the legacy <source>/image/<rest> path. If the file isn't
-	// there, fall back to the vault image index by basename, which lets
-	// Obsidian users keep images alongside their notes (or in any
-	// attachments folder) instead of forcing them into a single dir.
+	// Resolution order for /image/<rest>:
+	//   1. <source>/resource/image/<rest> — canonical new layout.
+	//   2. <source>/image/<rest>          — legacy gobog layout.
+	//   3. Wiki index lookup by basename  — Obsidian-style attachments
+	//                                       scattered through the vault.
 	cleaned := path.Clean("/" + r.URL.Path)
 	if !strings.HasPrefix(cleaned, "/image/") {
 		http.NotFound(w, r)
 		return
 	}
+	rest := strings.TrimPrefix(cleaned, "/image/")
 
 	rootAbs, _ := filepath.Abs(config.C.Blog.Source)
 
-	// Resolve to a filesystem path: legacy <source>/image/X first, vault
-	// index by basename second.
-	var fullAbs string
-	legacyAbs, _ := filepath.Abs(filepath.Join(config.C.Blog.Source, filepath.FromSlash(cleaned)))
-	if legacyAbs != "" && strings.HasPrefix(legacyAbs, rootAbs+string(filepath.Separator)) {
-		if fi, err := os.Stat(legacyAbs); err == nil && !fi.IsDir() {
-			fullAbs = legacyAbs
+	tryPath := func(rel string) string {
+		full := filepath.Join(config.C.Blog.Source, filepath.FromSlash(rel))
+		abs, _ := filepath.Abs(full)
+		if abs == "" || !strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
+			return ""
 		}
+		if fi, err := os.Stat(abs); err == nil && !fi.IsDir() {
+			return abs
+		}
+		return ""
+	}
+
+	var fullAbs string
+	if fullAbs = tryPath(filepath.Join("resource", "image", rest)); fullAbs == "" {
+		fullAbs = tryPath(filepath.Join("image", rest))
 	}
 	if fullAbs == "" {
 		base := path.Base(cleaned)
 		if rel := blog.Blog.Wiki().ResolveImage(base); rel != "" {
-			full := filepath.Join(config.C.Blog.Source, filepath.FromSlash(rel))
-			abs, _ := filepath.Abs(full)
-			if abs != "" && strings.HasPrefix(abs, rootAbs+string(filepath.Separator)) {
-				fullAbs = abs
-			}
+			fullAbs = tryPath(rel)
 		}
 	}
 	if fullAbs == "" {

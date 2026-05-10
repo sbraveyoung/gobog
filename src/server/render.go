@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
 	"github.com/sbraveyoung/gobog/src/blog"
@@ -140,21 +141,76 @@ func escapeMD(s string) string {
 	return strings.NewReplacer("[", `\[`, "]", `\]`).Replace(s)
 }
 
-// articleView wraps an article for template rendering. Embedding lets
-// templates keep using {{.Title}}, {{.URL}}, etc. while we shadow Parse with
-// a per-request value (avoids racing on Article.Parse across goroutines).
+// SiteMeta is the bundle every page needs in its header / footer: the blog
+// title, top-level pages for nav, the configured author, etc. Built fresh
+// per request from the live blog state so a content reload picks up new
+// pages without restart.
+type SiteMeta struct {
+	Title       string
+	Subtitle    string
+	Description string
+	Author      string
+	Domain      string
+	Year        int
+	Pages       articlepkg.Articles // top-level pages for the site nav
+}
+
+func newSiteMeta() SiteMeta {
+	return SiteMeta{
+		Title:       blog.Blog.Name,
+		Subtitle:    blog.Blog.SubName,
+		Description: blog.Blog.Description,
+		Author:      blog.Blog.Author,
+		Domain:      blog.Blog.Domain,
+		Year:        time.Now().Year(),
+		Pages:       blog.Blog.Articles(blog.BlogTypes["page"]),
+	}
+}
+
+// indexView is what the home template receives. SiteMeta lives under .Site so
+// templates can disambiguate from per-page metadata (group titles, etc.).
+type indexView struct {
+	Site   SiteMeta
+	Groups articlepkg.Articles
+}
+
+func newIndexView(groups articlepkg.Articles) indexView {
+	return indexView{Site: newSiteMeta(), Groups: groups}
+}
+
+// groupView is what group.html receives for a group landing page (a series,
+// a tag, search results, etc.). GroupTitle + GroupURL describe the group
+// itself; List is what to enumerate.
+type groupView struct {
+	Site       SiteMeta
+	GroupTitle string
+	GroupURL   string
+	List       articlepkg.Articles
+}
+
+func newGroupView(group *articlepkg.Article, list articlepkg.Articles) groupView {
+	v := groupView{Site: newSiteMeta(), List: list}
+	if group != nil {
+		v.GroupTitle = group.Title
+		v.GroupURL = group.URL
+	}
+	return v
+}
+
+// articleView wraps an article for template rendering. Embedding *Article
+// lets templates keep using {{.Title}}, {{.URL}}, etc. while we shadow Parse
+// with a per-request value (avoids racing on Article.Parse across goroutines).
 //
-// New fields (ViewCount / Pinned / Private) are exposed so theme templates
-// can decorate listings ("📌 pinned", "🔒 private", "👀 12 views") without
-// touching package globals.
+// .Site holds the site-wide bundle so post.html can build the same header /
+// footer as index.html without re-fetching globals.
 type articleView struct {
 	*articlepkg.Article
+	Site        SiteMeta
 	Parse       string
 	Domain      string
 	Canonical   string
 	SiteTitle   string
 	Description string
-	ViewCount   int64
 	Pinned      bool
 	Private     bool
 	AI          bool
@@ -167,18 +223,18 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 	if desc == "" {
 		desc = a.Description
 	}
-	var n int64
-	if views != nil {
-		n = views.Get(a.URL)
+	site := newSiteMeta()
+	if domain == "" {
+		domain = site.Domain
 	}
 	return articleView{
 		Article:     a,
+		Site:        site,
 		Parse:       parse,
 		Domain:      domain,
 		Canonical:   domain + a.URL,
 		SiteTitle:   a.Title,
 		Description: desc,
-		ViewCount:   n,
 		Pinned:      a.IsPinned(),
 		Private:     a.IsPrivate(),
 		AI:          a.IsAI(),

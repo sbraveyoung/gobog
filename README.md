@@ -12,14 +12,48 @@ files) and it does one of two things:
   and exits. The output is drop-in compatible with GitHub Pages.
 
 ```
-Obsidian vault            gobog                       reader
-─────────────────  ────►  ───────────────  ────────►  HTML
-   Blog/                  Live HTTP server            (or)
-     Hello.md             OR                          GitHub Pages
-     Tech/                gobog -export ./dist        (drag the dist into
-       HTTP.md                                         <user>.github.io)
-     about/me.md
+Obsidian vault                gobog                       reader
+─────────────────────  ────►  ───────────────  ────────►  HTML
+   Blog/                      Live HTTP server            (or)
+     post/                    OR                          GitHub Pages
+       Hello.md               gobog -export ./dist        (drag the dist into
+       Tech/HTTP.md                                        <user>.github.io)
+     pages/about.md
+     resource/image/foo.png
 ```
+
+## Vault directory contract
+
+`[blog].source` points at a folder shaped like:
+
+| Path                              | Role                                            |
+| --------------------------------- | ----------------------------------------------- |
+| `<source>/post/...`               | Articles (recursive). Sub-dirs become groups.   |
+| `<source>/pages/<name>.md`        | Top-level pages. Each renders at `/<name>`.     |
+| `<source>/resource/image/...`     | Images / attachments. Served under `/image/`.   |
+
+The legacy `<source>/about/` and `<source>/image/` layouts are still honored
+for backward compatibility, but new vaults should use the canonical paths.
+
+## Themes
+
+Three themes ship in-tree:
+
+| Theme               | Vibe                          |
+| ------------------- | ----------------------------- |
+| `themes/minimal`    | Default. Black-ink, neutral.  |
+| `themes/sepia`      | Warm, paper-feel reading.     |
+| `themes/ocean`      | Cool blue, calm.              |
+
+All three share the same templates (`index.html` for the home, `group.html`
+for sub-listings, `post.html` for a single article) and JavaScript. Only
+the CSS color tokens differ. Pick one with `[blog].theme = "themes/<name>"`.
+
+Every theme supports:
+
+- 中文 / English nav toggle (persists in `localStorage`)
+- system dark/light following with a manual override (also persisted)
+- mobile nav, reading-progress bar, auto-built TOC, code-copy button
 
 ## Quick start
 

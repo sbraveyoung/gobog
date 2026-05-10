@@ -67,7 +67,6 @@
                 {{ if .CreateTime }}<span class="meta-item meta-date">📅 {{ .CreateTime }}</span>{{ end }}
                 {{ if .WordCount }}<span class="meta-item meta-words">📝 {{ .WordCount }} words</span>{{ end }}
                 {{ if .ReadingTimeMin }}<span class="meta-item meta-time">⏱ {{ .ReadingTimeMin }} min read</span>{{ end }}
-                {{ if .ViewCount }}<span class="meta-item meta-views">👀 {{ .ViewCount }} views</span>{{ end }}
                 {{ range .Tags }}<a class="meta-tag" href="/tag/{{ . }}">#{{ . }}</a> {{ end }}
             </div>
             {{ .Parse }}

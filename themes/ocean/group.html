@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ .GroupTitle }} · {{ .Site.Title }}</title>
+<link rel="icon" href="/css/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml" title="Atom feed">
+<link rel="stylesheet" href="/css/main.css">
+<script>
+(function () {
+  var saved = localStorage.getItem("gobog-theme");
+  var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (saved === "dark" || (saved === null && prefersDark)) document.documentElement.setAttribute("data-theme", "dark");
+  else if (saved === "light") document.documentElement.setAttribute("data-theme", "light");
+  var lang = localStorage.getItem("gobog-lang");
+  if (lang) document.documentElement.setAttribute("lang", lang);
+})();
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="row">
+    <a class="brand" href="/" aria-label="home">
+      <svg class="brand-mark" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><use href="/css/icon.svg#mark"/></svg>
+      <span class="brand-text">{{ .Site.Title }}</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-label="menu" aria-expanded="false">≡</button>
+    <nav class="site-nav">
+      <a href="/">Home</a>
+      {{ range .Site.Pages }}<a href="{{ .URL }}">{{ .Title }}</a>{{ end }}
+      <a href="/atom.xml">RSS</a>
+      <button class="lang-toggle icon-btn" type="button" aria-label="language">
+        <span class="lang-zh">中</span><span class="lang-en">EN</span>
+      </button>
+      <button class="theme-toggle icon-btn" type="button" aria-label="theme">
+        <span class="theme-icon-light">☀</span><span class="theme-icon-dark">☾</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="page page-group">
+  <nav class="crumbs"><a href="/">Home</a><span>›</span><span>{{ .GroupTitle }}</span></nav>
+  <header class="group-head">
+    <h1>{{ .GroupTitle }}</h1>
+    <p class="group-count">{{ len .List }} 篇</p>
+  </header>
+
+  <section class="post-list">
+    {{ range $v := .List }}
+    <article class="entry{{ if $v.IsPinned }} entry-pinned{{ end }}">
+      <header class="entry-head">
+        <h2 class="entry-title">
+          {{ if $v.IsPinned }}<span class="badge badge-pin" title="pinned">★</span>{{ end }}
+          {{ if $v.IsPrivate }}<span class="badge badge-priv" title="private">●</span>{{ end }}
+          {{ if $v.IsAI }}<span class="badge badge-ai" title="AI">🤖 {{ $v.AILabel }}</span>{{ end }}
+          <a href="{{ $v.URL }}">{{ $v.Title }}</a>
+          {{ if $v.SubArticle }}<span class="entry-count">{{ len $v.SubArticle }} 篇</span>{{ end }}
+        </h2>
+      </header>
+      {{ if and $v.Summary (not $v.IsPrivate) }}<p class="entry-summary">{{ $v.Summary }}</p>{{ end }}
+      <div class="entry-meta">
+        {{ if $v.CreateTime }}<span>{{ $v.CreateTime }}</span>{{ end }}
+        {{ if $v.ReadingTimeMin }}<span>· {{ $v.ReadingTimeMin }} min</span>{{ end }}
+        {{ range $v.Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
+      </div>
+    </article>
+    {{ end }}
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="row">
+    <span>© {{ .Site.Year }} {{ .Site.Author }}</span>
+    <span class="dot">·</span>
+    <span>powered by <a href="https://github.com/sbraveyoung/gobog">gobog</a></span>
+  </div>
+</footer>
+
+<script src="/js/site.js" defer></script>
+</body>
+</html>

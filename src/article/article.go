@@ -115,16 +115,18 @@ func (a *Article) IsAI() bool {
 }
 
 // AILabel returns the human-facing badge text. For truthy keywords it
-// returns "AI"; otherwise the verbatim trimmed value (so "claude" renders
-// as "🤖 claude" while `ai: true` renders as just "🤖 AI"). Returns "" when
-// IsAI is false.
+// returns "AI powered" — the new copy makes it explicit that the post was
+// drafted with AI assistance, not written by an AI from scratch. Any other
+// non-empty, non-falsy front-matter value (e.g. `ai: claude`) is treated
+// as a model name and rendered verbatim ("🤖 claude", "🤖 GPT-4o"). Returns
+// "" when IsAI is false so templates can `{{ if .AI }}` cleanly.
 func (a *Article) AILabel() string {
 	if !a.IsAI() {
 		return ""
 	}
 	v := strings.TrimSpace(a.AI)
 	if truthy(v) {
-		return "AI"
+		return "AI powered"
 	}
 	return v
 }

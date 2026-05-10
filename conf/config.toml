@@ -20,11 +20,11 @@ redirect_tls=false
 
 [blog]
 domain="https://sbrave.cn"
-title="smart的个人博客"
-subtitle="代码分享专栏"
-description="阅读·实践·分享"
-author="smart"
-theme="themes/simple"
+title="sbraveyoung 的代码笔记"
+subtitle="阅读 · 实践 · 思考"
+description="一个程序员的笔记本：技术拆解、踩坑总结、生活随笔。"
+author="sbraveyoung"
+theme="themes/minimal"
 source="${YOUR_SOURCE_PATH}"
 # URL generation strategy. The scan itself is always recursive over <source>.
 #   - "vault"  (default) — slugified relative path: /post/tech/http

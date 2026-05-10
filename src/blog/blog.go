@@ -15,12 +15,16 @@ import (
 	"github.com/sbraveyoung/gobog/src/config"
 )
 
-// BlogTypes maps a logical type to the URL prefix used in routes / templates.
-// "post" gets all top-level + nested notes; "about" is a single note (the
-// first .md file under <source>/about/, if present).
+// BlogTypes maps a logical type to its directory under <source>.
+//   - "post"  → <source>/post/   (recursively scanned, becomes /post/...)
+//   - "page"  → <source>/pages/  (each <name>.md becomes /<name>, e.g.
+//                                  pages/about.md → /about)
+//
+// Pages replace the old hardcoded "about" page. Any number of top-level
+// pages can live under pages/; they all show in the site header nav.
 var BlogTypes = map[string]string{
-	"post":  "post",
-	"about": "about",
+	"post": "post",
+	"page": "pages",
 }
 
 var Blog *BlogST
@@ -163,20 +167,21 @@ func (b *BlogST) Reload() error {
 	articles := make(map[string]articlepkg.Articles)
 	wiki := newWikiIndex()
 
-	posts, err := loadDir(filepath.Join(source, BlogTypes["post"]), source, "/post", true)
+	postRoot := filepath.Join(source, BlogTypes["post"])
+	posts, err := loadDir(postRoot, postRoot, "/post", true)
 	if err != nil {
 		return err
 	}
 	articles[BlogTypes["post"]] = posts
 
-	abouts, err := loadAbouts(filepath.Join(source, BlogTypes["about"]))
+	pages, err := loadPages(filepath.Join(source, BlogTypes["page"]))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	articles[BlogTypes["about"]] = abouts
+	articles[BlogTypes["page"]] = pages
 
 	indexNotes(wiki, articles[BlogTypes["post"]])
-	indexNotes(wiki, abouts)
+	indexNotes(wiki, pages)
 	if err := indexImages(wiki, source); err != nil {
 		logs.Warn("image index:", err)
 	}
@@ -220,11 +225,16 @@ func shouldExcludeTop(name string) bool {
 	return false
 }
 
-// loadDir loads a directory into an Articles slice. dirPath is the directory
-// being walked; sourceRoot is the configured <source> (used to compute
-// relative URLs). urlPrefix is what the resulting article URLs start with.
-// excludeAbout=true skips the top-level "about" subdirectory.
-func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlepkg.Articles, error) {
+// loadDir loads a directory into an Articles slice.
+//
+//	dirPath   — the directory being walked.
+//	walkRoot  — the root the walk started from (e.g. <source>/post/). Used
+//	            to compute path-relative URLs without doubling the
+//	            urlPrefix segment.
+//	urlPrefix — what the resulting article URLs start with (e.g. "/post").
+//	isRoot    — true only for the call on walkRoot itself; controls
+//	            top-level filters like [blog].exclude_dirs.
+func loadDir(dirPath, walkRoot, urlPrefix string, isRoot bool) (articlepkg.Articles, error) {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -238,15 +248,10 @@ func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlep
 		}
 		full := filepath.Join(dirPath, name)
 		if e.IsDir() {
-			if dirPath == sourceRoot {
-				if excludeAbout && name == "about" {
-					continue
-				}
-				if shouldExcludeTop(name) {
-					continue
-				}
+			if isRoot && shouldExcludeTop(name) {
+				continue
 			}
-			child, err := loadGroupDir(full, sourceRoot, urlPrefix)
+			child, err := loadGroupDir(full, walkRoot, urlPrefix)
 			if err != nil {
 				logs.Warn("loadGroupDir:", err)
 				continue
@@ -258,7 +263,7 @@ func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlep
 			if !strings.HasSuffix(name, ".md") {
 				continue
 			}
-			art, err := buildArticle(full, sourceRoot, urlPrefix, name)
+			art, err := buildArticle(full, walkRoot, urlPrefix, name)
 			if err != nil {
 				logs.Warn("buildArticle:", err)
 				continue
@@ -275,17 +280,20 @@ func loadDir(dirPath, sourceRoot, urlPrefix string, excludeAbout bool) (articlep
 
 // loadGroupDir walks a non-root directory and produces a group Article whose
 // SubArticle list contains the directory's notes (recursively).
-func loadGroupDir(dirPath, sourceRoot, urlPrefix string) (*articlepkg.Article, error) {
-	rel, err := filepath.Rel(sourceRoot, dirPath)
+func loadGroupDir(dirPath, walkRoot, urlPrefix string) (*articlepkg.Article, error) {
+	rel, err := filepath.Rel(walkRoot, dirPath)
 	if err != nil {
 		return nil, err
 	}
 	groupURL := urlPrefix + "/" + slugifyPath(rel)
 
-	subs, err := loadDir(dirPath, sourceRoot, urlPrefix, false)
+	subs, err := loadDir(dirPath, walkRoot, urlPrefix, false)
 	if err != nil {
 		return nil, err
 	}
+	// Drop empty groups — a directory with no publishable .md files (or
+	// only sub-groups that all turned out empty) shouldn't appear in the
+	// listings or render an empty index page.
 	if len(subs) == 0 {
 		return nil, nil
 	}
@@ -309,7 +317,7 @@ func loadGroupDir(dirPath, sourceRoot, urlPrefix string) (*articlepkg.Article, e
 //
 // Returns (nil, nil) when the article should be skipped (draft / hidden
 // without the include_drafts / include_hidden flag).
-func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Article, error) {
+func buildArticle(path, walkRoot, urlPrefix, fileName string) (*articlepkg.Article, error) {
 	a, err := articlepkg.ParseFile(path)
 	if err != nil {
 		return nil, err
@@ -321,7 +329,7 @@ func buildArticle(path, sourceRoot, urlPrefix, fileName string) (*articlepkg.Art
 		return nil, nil
 	}
 
-	rel, err := filepath.Rel(sourceRoot, path)
+	rel, err := filepath.Rel(walkRoot, path)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +402,15 @@ func slugifyPath(rel string) string {
 	return strings.Join(out, "/")
 }
 
-func loadAbouts(dir string) (articlepkg.Articles, error) {
+// loadPages walks <source>/pages/ and produces one Article per .md file.
+// Each file's URL is /<slug-of-basename> so pages/about.md → /about,
+// pages/contact.md → /contact, etc. Front-matter `url:` overrides the
+// auto-generated URL when present.
+//
+// Unlike posts, pages don't nest — only top-level *.md files are picked up.
+// Sub-directories under pages/ are ignored (kept for the user to stash
+// drafts or attachments without exposing them).
+func loadPages(dir string) (articlepkg.Articles, error) {
 	if !dirExists(dir) {
 		return nil, nil
 	}
@@ -413,21 +429,33 @@ func loadAbouts(dir string) (articlepkg.Articles, error) {
 		full := filepath.Join(dir, e.Name())
 		a, err := articlepkg.ParseFile(full)
 		if err != nil {
-			logs.Warn("about parse:", err)
+			logs.Warn("page parse:", err)
 			continue
 		}
-		if a.URL == "" {
-			a.URL = "/about"
-		}
+		basename := strings.TrimSuffix(e.Name(), ".md")
+		updated := false
 		if a.Title == "" {
-			a.Title = strings.TrimSuffix(e.Name(), ".md")
+			a.Title = basename
+			updated = true
+		}
+		slug := articlepkg.SlugOrHash(basename)
+		if a.URL == "" {
+			a.URL = "/" + slug
+			updated = true
 		}
 		if a.Id == "" {
-			a.Id = articlepkg.SlugOrHash(a.Title)
+			a.Id = slug
+			updated = true
 		}
 		if a.CreateTime == "" {
 			if fi, err := os.Stat(full); err == nil {
 				a.CreateTime = fi.ModTime().Format(articlepkg.TIME_LAYOUT)
+				updated = true
+			}
+		}
+		if updated {
+			if err := articlepkg.RewriteFrontMatter(a); err != nil {
+				logs.Warn("persist page front-matter:", err)
 			}
 		}
 		list = append(list, a)

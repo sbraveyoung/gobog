@@ -21,16 +21,17 @@ func writeNote(t *testing.T, path, body string) {
 	}
 }
 
-// TestReloadVaultLayout points the blog at an Obsidian-style folder (no
-// "post/" subdir) and verifies arbitrary depth + path-derived URLs +
-// about/ separation + image indexing all work.
+// TestReloadVaultLayout points the blog at an Obsidian-style folder with the
+// canonical post/ + pages/ + resource/image/ split and verifies arbitrary
+// depth + path-derived URLs + page separation + image indexing all work.
 func TestReloadVaultLayout(t *testing.T) {
 	root := t.TempDir()
-	writeNote(t, filepath.Join(root, "Hello.md"), "---\ntitle: Hello\ncreate_time: 2026-04-25 09:00:00\n---\nbody\n")
-	writeNote(t, filepath.Join(root, "Tech", "HTTP.md"), "---\ntitle: HTTP\ncreate_time: 2026-04-24 09:00:00\n---\nseebar [[Hello]]\n")
-	writeNote(t, filepath.Join(root, "Tech", "Networking", "TLS.md"), "---\ntitle: TLS\ncreate_time: 2026-04-23 09:00:00\n---\ntls\n")
-	writeNote(t, filepath.Join(root, "about", "me.md"), "---\ntitle: About Me\n---\nme\n")
-	writeNote(t, filepath.Join(root, "Tech", "Networking", "diagram.png"), "fakepng")
+	writeNote(t, filepath.Join(root, "post", "Hello.md"), "---\ntitle: Hello\ncreate_time: 2026-04-25 09:00:00\n---\nbody\n")
+	writeNote(t, filepath.Join(root, "post", "Tech", "HTTP.md"), "---\ntitle: HTTP\ncreate_time: 2026-04-24 09:00:00\n---\nseebar [[Hello]]\n")
+	writeNote(t, filepath.Join(root, "post", "Tech", "Networking", "TLS.md"), "---\ntitle: TLS\ncreate_time: 2026-04-23 09:00:00\n---\ntls\n")
+	writeNote(t, filepath.Join(root, "pages", "about.md"), "---\ntitle: About\n---\nme\n")
+	writeNote(t, filepath.Join(root, "pages", "contact.md"), "---\ntitle: Contact\n---\ncontact\n")
+	writeNote(t, filepath.Join(root, "resource", "image", "diagram.png"), "fakepng")
 	writeNote(t, filepath.Join(root, ".obsidian", "config"), "ignore me")
 
 	prev := config.C.Blog.Source
@@ -53,9 +54,13 @@ func TestReloadVaultLayout(t *testing.T) {
 		}
 	}
 
-	abouts := Blog.Articles(BlogTypes["about"])
-	if len(abouts) != 1 || abouts[0].URL != "/about" {
-		t.Errorf("about: got %v", abouts)
+	pages := Blog.Articles(BlogTypes["page"])
+	pageURLs := map[string]bool{}
+	for _, p := range pages {
+		pageURLs[p.URL] = true
+	}
+	if !pageURLs["/about"] || !pageURLs["/contact"] {
+		t.Errorf("pages: want /about and /contact, got %v", pageURLs)
 	}
 
 	wiki := Blog.Wiki()
@@ -65,7 +70,7 @@ func TestReloadVaultLayout(t *testing.T) {
 	if got := wiki.ResolveNote("Tech/HTTP"); got != "/post/tech/http" {
 		t.Errorf("ResolveNote(Tech/HTTP) = %q, want /post/tech/http", got)
 	}
-	if got := wiki.ResolveImage("diagram.png"); got != "Tech/Networking/diagram.png" {
+	if got := wiki.ResolveImage("diagram.png"); got != "resource/image/diagram.png" {
 		t.Errorf("ResolveImage(diagram.png) = %q", got)
 	}
 	if got := wiki.ResolveImage("missing.png"); got != "" {
@@ -86,7 +91,7 @@ func TestReloadVaultLayout(t *testing.T) {
 // the URL stays stable even if the file is later renamed or moved.
 func TestReloadPersistsMissingMeta(t *testing.T) {
 	root := t.TempDir()
-	notePath := filepath.Join(root, "Tech", "HTTP.md")
+	notePath := filepath.Join(root, "post", "Tech", "HTTP.md")
 	writeNote(t, notePath, "no front matter at all\n")
 
 	prev := config.C.Blog.Source
@@ -115,14 +120,14 @@ func TestReloadPersistsMissingMeta(t *testing.T) {
 	}
 }
 
-// TestExcludeDirs verifies [blog].exclude_dirs and the implicit "about"
-// exclusion both keep their named top-level folders out of the listing.
+// TestExcludeDirs verifies [blog].exclude_dirs keeps the named top-level
+// folders inside <source>/post/ out of the listing.
 func TestExcludeDirs(t *testing.T) {
 	root := t.TempDir()
-	writeNote(t, filepath.Join(root, "Hello.md"), "")
-	writeNote(t, filepath.Join(root, "Templates", "tpl.md"), "")
-	writeNote(t, filepath.Join(root, "Drafts", "wip.md"), "")
-	writeNote(t, filepath.Join(root, "Tech", "ok.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Hello.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Templates", "tpl.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Drafts", "wip.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Tech", "ok.md"), "")
 
 	prevSrc, prevExcl := config.C.Blog.Source, config.C.Blog.ExcludeDirs
 	config.C.Blog.Source = root
@@ -153,12 +158,12 @@ func TestExcludeDirs(t *testing.T) {
 
 // TestLayoutLegacyURLs verifies [blog].layout = "legacy" generates URLs
 // matching the original gobog scheme — `/post/<crc32(parent)>/<crc32(body)>`
-// for nested files, `/post/<crc32(body)>` for files at <source>/. The
+// for nested files, `/post/<crc32(body)>` for files at <source>/post/. The
 // scanner shape (recursive walk) is the same regardless of layout.
 func TestLayoutLegacyURLs(t *testing.T) {
 	root := t.TempDir()
-	writeNote(t, filepath.Join(root, "Hello.md"), "hello body\n")
-	writeNote(t, filepath.Join(root, "Tech", "http.md"), "http body\n")
+	writeNote(t, filepath.Join(root, "post", "Hello.md"), "hello body\n")
+	writeNote(t, filepath.Join(root, "post", "Tech", "http.md"), "http body\n")
 
 	prevSrc, prevLayout := config.C.Blog.Source, config.C.Blog.Layout
 	config.C.Blog.Source = root
@@ -180,14 +185,13 @@ func TestLayoutLegacyURLs(t *testing.T) {
 	}
 }
 
-// TestLayoutVaultURLs (default) confirms slugified path URLs, including the
-// previously-failing "user has a folder named post" case — vault mode never
-// trips into legacy because there is no longer a separate scanner.
+// TestLayoutVaultURLs (default) confirms slugified path URLs from inside
+// the canonical <source>/post/ tree.
 func TestLayoutVaultURLs(t *testing.T) {
 	root := t.TempDir()
 	writeNote(t, filepath.Join(root, "post", "in-post.md"), "")
-	writeNote(t, filepath.Join(root, "Hello.md"), "")
-	writeNote(t, filepath.Join(root, "Tech", "http.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Hello.md"), "")
+	writeNote(t, filepath.Join(root, "post", "Tech", "http.md"), "")
 
 	prevSrc, prevLayout := config.C.Blog.Source, config.C.Blog.Layout
 	config.C.Blog.Source = root
@@ -204,7 +208,7 @@ func TestLayoutVaultURLs(t *testing.T) {
 	for _, a := range Blog.AllPosts() {
 		urls[a.URL] = true
 	}
-	for _, want := range []string{"/post/post/in-post", "/post/hello", "/post/tech/http"} {
+	for _, want := range []string{"/post/in-post", "/post/hello", "/post/tech/http"} {
 		if !urls[want] {
 			t.Errorf("layout=vault: missing %q in %v", want, urls)
 		}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ .Title }} · {{ .Site.Title }}</title>
+<link rel="icon" href="/css/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml" title="Atom feed">
+<link rel="stylesheet" href="/css/main.css">
+<link rel="canonical" href="{{ .Canonical }}">
+<meta name="description" content="{{ html .Description }}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ html .Title }}">
+<meta property="og:url" content="{{ .Canonical }}">
+<meta property="og:description" content="{{ html .Description }}">
+{{ if .CoverURL }}<meta property="og:image" content="{{ .CoverURL }}">{{ end }}
+<script>
+(function () {
+  var saved = localStorage.getItem("gobog-theme");
+  var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (saved === "dark" || (saved === null && prefersDark)) document.documentElement.setAttribute("data-theme", "dark");
+  else if (saved === "light") document.documentElement.setAttribute("data-theme", "light");
+  var lang = localStorage.getItem("gobog-lang");
+  if (lang) document.documentElement.setAttribute("lang", lang);
+})();
+</script>
+</head>
+<body>
+
+<div class="reading-progress" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="row">
+    <a class="brand" href="/" aria-label="home">
+      <svg class="brand-mark" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><use href="/css/icon.svg#mark"/></svg>
+      <span class="brand-text">{{ .Site.Title }}</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-label="menu" aria-expanded="false">≡</button>
+    <nav class="site-nav">
+      <a href="/">Home</a>
+      {{ range .Site.Pages }}<a href="{{ .URL }}">{{ .Title }}</a>{{ end }}
+      <a href="/atom.xml">RSS</a>
+      <button class="lang-toggle icon-btn" type="button" aria-label="language">
+        <span class="lang-zh">中</span><span class="lang-en">EN</span>
+      </button>
+      <button class="theme-toggle icon-btn" type="button" aria-label="theme">
+        <span class="theme-icon-light">☀</span><span class="theme-icon-dark">☾</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="page page-post">
+  <article class="post">
+    {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
+    <header class="post-head">
+      <div class="post-meta">
+        {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
+        {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
+        {{ if .AI }}<span class="badge badge-ai" title="AI">🤖 {{ .AILabel }}</span>{{ end }}
+        {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
+        {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
+        {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
+        {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
+      </div>
+    </header>
+
+    <aside class="post-toc" hidden><h2>Contents</h2><ol></ol></aside>
+
+    <div class="post-body">{{ .Parse }}</div>
+
+    <footer class="post-foot">
+      <a class="back-home" href="/">← back</a>
+    </footer>
+  </article>
+</main>
+
+<footer class="site-footer">
+  <div class="row">
+    <span>© {{ .Site.Year }} {{ .Site.Author }}</span>
+    <span class="dot">·</span>
+    <span>powered by <a href="https://github.com/sbraveyoung/gobog">gobog</a></span>
+  </div>
+</footer>
+
+<script src="/js/site.js" defer></script>
+</body>
+</html>
