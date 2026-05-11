@@ -143,7 +143,10 @@ draft: true                            # excluded from listings unless include_d
 hidden: true                           # like draft, semantically "temporarily off"
 private: true                          # listed but body needs HTTP Basic auth
 pin: true                              # sticks to the top of its containing listing
-ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI 协作"
+ai: true                               # → "🤖 AI 辅助"   (default truthy)
+                                       # ai: generated → "🤖 AI 生成"
+                                       # ai: edited    → "🤖 AI 校对"
+                                       # ai: claude    → "🤖 claude"   (model byline, verbatim)
 ---
 
 Body markdown here. **Bold**, *italics*, [links](https://example.com),

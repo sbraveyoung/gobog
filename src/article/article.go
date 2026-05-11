@@ -118,19 +118,33 @@ func (a *Article) IsAI() bool {
 	return true
 }
 
-// AILabel returns the human-facing badge text. For truthy keywords it
-// returns "AI 协作" — the copy makes it explicit that the post is the
-// result of collaboration between author and AI, not pure AI generation.
-// Any other non-empty, non-falsy front-matter value (e.g. `ai: claude`) is
-// treated as a model name and rendered verbatim ("🤖 claude", "🤖 GPT-4o").
-// Returns "" when IsAI is false so templates can `{{ if .AI }}` cleanly.
+// AILabel returns the human-facing badge text. The intent borrows IPTC's
+// three-tier digitalSourceType vocabulary (trained / composite / enhanced)
+// in plain Chinese:
+//
+//	front-matter `ai:` value         badge        meaning
+//	──────────────────────────────   ──────────   ─────────────────────────────
+//	true / yes / 1 / on / assisted   AI 辅助       human-led, AI helped along
+//	generated / wrote / written      AI 生成       AI-led, human reviewed/edited
+//	edited / reviewed / polished     AI 校对       human-written, AI polished
+//	<anything else non-empty>        <verbatim>   model byline ("claude", "gpt-4o", …)
+//	false / no / 0 / off / empty     (no badge)
+//
+// Defaulting truthy values to "AI 辅助" matches the most idiomatic Chinese
+// tech-blog convention (sspai et al.) and keeps the badge to two
+// characters so it fits naturally in the post-meta strip.
 func (a *Article) AILabel() string {
 	if !a.IsAI() {
 		return ""
 	}
 	v := strings.TrimSpace(a.AI)
-	if truthy(v) {
-		return "AI 协作"
+	switch strings.ToLower(v) {
+	case "true", "yes", "1", "on", "assisted", "assist", "ai-assisted":
+		return "AI 辅助"
+	case "generated", "ai-generated", "wrote", "written":
+		return "AI 生成"
+	case "edited", "ai-edited", "reviewed", "polished", "proofread":
+		return "AI 校对"
 	}
 	return v
 }

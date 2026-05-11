@@ -283,17 +283,40 @@ func TestAIBadgeSemantics(t *testing.T) {
 		wantIsAI  bool
 		wantLabel string
 	}{
+		// Default truthy → "AI 辅助" (the most common case).
 		{"", false, ""},
-		{"true", true, "AI 协作"},
-		{"True", true, "AI 协作"},
-		{"1", true, "AI 协作"},
-		{"yes", true, "AI 协作"},
-		{"on", true, "AI 协作"},
-		{"false", false, ""},   // explicit false isn't an AI badge
+		{"true", true, "AI 辅助"},
+		{"True", true, "AI 辅助"},
+		{"1", true, "AI 辅助"},
+		{"yes", true, "AI 辅助"},
+		{"on", true, "AI 辅助"},
+		{"assisted", true, "AI 辅助"},
+		{"AI-assisted", true, "AI 辅助"},
+
+		// Generated tier (AI-led, human reviewed/edited).
+		{"generated", true, "AI 生成"},
+		{"AI-generated", true, "AI 生成"},
+		{"wrote", true, "AI 生成"},
+		{"written", true, "AI 生成"},
+
+		// Edited tier (human-written, AI polished).
+		{"edited", true, "AI 校对"},
+		{"polished", true, "AI 校对"},
+		{"proofread", true, "AI 校对"},
+		{"reviewed", true, "AI 校对"},
+
+		// Explicit false stays a non-badge.
+		{"false", false, ""},
+
+		// Model byline pass-through (verbatim).
 		{"claude", true, "claude"},
 		{"GPT-4o", true, "GPT-4o"},
 		{"gemini-2.5", true, "gemini-2.5"},
 		{"  claude  ", true, "claude"}, // surrounding whitespace trimmed
+
+		// Anything that doesn't match a keyword renders verbatim,
+		// preserving the user's custom labels (e.g. legacy "AI 协作").
+		{"AI 协作", true, "AI 协作"},
 	}
 	for _, c := range cases {
 		a := &Article{}

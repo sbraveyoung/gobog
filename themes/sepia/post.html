@@ -57,7 +57,7 @@
       <div class="post-meta">
         {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
         {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
-        {{ if .AI }}<span class="badge badge-ai" title="AI 协作">🤖 {{ .AILabel }}</span>{{ end }}
+        {{ if .AI }}<span class="badge badge-ai" title="{{ .AILabel }}">🤖 {{ .AILabel }}</span>{{ end }}
         {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
         {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
         {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}

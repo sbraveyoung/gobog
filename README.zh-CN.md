@@ -105,7 +105,10 @@ draft: true                            # 排除在列表之外（除非 include_
 hidden: true                           # 跟 draft 类似，语义上是"暂时下线"
 private: true                          # 列出但正文需要 HTTP Basic 认证
 pin: true                              # 置顶到所属列表的开头
-ai: claude                             # 显示 🤖 角标 + 模型名；ai: true 显示 "🤖 AI 协作"
+ai: true                               # → "🤖 AI 辅助"   （truthy 默认）
+                                       # ai: generated → "🤖 AI 生成"
+                                       # ai: edited    → "🤖 AI 校对"
+                                       # ai: claude    → "🤖 claude"   （模型署名，原样显示）
 ---
 
 正文 markdown。**粗体**、*斜体*、[链接](https://example.com)、围栏代码块、表格、
