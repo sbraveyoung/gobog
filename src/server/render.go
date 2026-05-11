@@ -333,8 +333,8 @@ type TagCount struct {
 //
 // CreateTime shadows the embedded Article.CreateTime (a plain string) with
 // a tmplTime so `{{.CreateTime.Format "2006-01-02"}}` works in
-// letter/press/tufte; minimal/ocean/sepia/simple keep working because
-// tmplTime renders as its underlying string under `{{.CreateTime}}`.
+// letter/press/tufte; minimal/ocean/sepia keep working because tmplTime
+// renders as its underlying string under `{{.CreateTime}}`.
 //
 // ViewCount stays at 0 — the view-count subsystem was retired but
 // some themes still reference `{{ if .ViewCount }}`, and a missing
@@ -409,6 +409,62 @@ func newIndexView(groups articlepkg.Articles) indexView {
 	}
 }
 
+// newGroupAsIndexView builds an indexView for the renderGroup / exportPosts
+// / exportTags fallback path when the active theme has no group.html and we
+// have to reuse index.html. letter / press / tufte iterate
+// .Articles / .Feature / .Digest / .Rest in their index template and switch
+// on .Tag / .Group for the page header, so a plain groupView would crash
+// with "can't evaluate field <name> in type server.groupView".
+//
+// .Tag is set when the group's URL starts with `/tag/`; otherwise .Group
+// gets the group's Title (which is the series name for sub-listings or
+// `"Search: <q>"` for search results).
+func newGroupAsIndexView(group *articlepkg.Article, list articlepkg.Articles) indexView {
+	site := newSiteMeta()
+	posts := flattenPosts(list)
+	now := time.Now()
+	cards := newPostCardViews(posts)
+
+	var feature *postCardView
+	var digest, rest []*postCardView
+	if len(cards) > 0 {
+		feature = cards[0]
+		tail := cards[1:]
+		n := 3
+		if len(tail) < n {
+			n = len(tail)
+		}
+		digest = tail[:n]
+		rest = tail[n:]
+	}
+
+	tags := blog.Blog.Tags()
+	allTags := make([]TagCount, 0, len(tags))
+	for _, t := range tags {
+		allTags = append(allTags, TagCount{Name: t, Count: len(blog.Blog.PostsByTag(t))})
+	}
+
+	v := indexView{
+		Site:     site,
+		Groups:   list,
+		Articles: cards,
+		Year:     now.Year(),
+		Now:      now,
+		Feature:  feature,
+		Digest:   digest,
+		Rest:     rest,
+		AllTags:  allTags,
+	}
+	if group != nil {
+		if strings.HasPrefix(group.URL, "/tag/") {
+			v.Tag = strings.TrimPrefix(group.URL, "/tag/")
+		} else {
+			v.Group = group.Title
+		}
+	}
+	return v
+}
+
 // flattenPosts walks a group tree and returns every leaf article, sorted by
 // pinned-first then create_time descending. Themes that present a flat
 // "article feed" (letter / tufte / press) iterate over this.
@@ -460,7 +516,7 @@ func newGroupView(group *articlepkg.Article, list articlepkg.Articles) groupView
 // CreateTime shadows the embedded string so themes that call
 // `{{.CreateTime.Format "2006-01-02"}}` (letter / press / tufte) work; the
 // underlying tmplTime still renders as the raw string for themes that just
-// do `{{.CreateTime}}` (minimal / ocean / sepia / simple).
+// do `{{.CreateTime}}` (minimal / ocean / sepia).
 //
 // ViewCount stays at 0 — the view-count subsystem was retired but
 // letter / press / tufte post.html templates still reference
