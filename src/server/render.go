@@ -283,12 +283,12 @@ type indexView struct {
 
 	Tag      string
 	Group    string
-	Articles articlepkg.Articles
+	Articles []*postCardView
 	Year     int
 	Now      time.Time
-	Feature  *articlepkg.Article
-	Digest   articlepkg.Articles
-	Rest     articlepkg.Articles
+	Feature  *postCardView
+	Digest   []*postCardView
+	Rest     []*postCardView
 	AllTags  []TagCount
 }
 
@@ -299,16 +299,58 @@ type TagCount struct {
 	Count int
 }
 
+// postCardView wraps an *Article for the flat post-feed views that
+// letter / tufte / press templates iterate over. The raw Article only
+// exposes Is{Pinned,Private,AI} methods + a `Cover` raw string, but the
+// new themes use field-style `.Pinned`, `.AI`, `.CoverURL`, etc. The
+// wrapper keeps the article's own fields/methods reachable via embedding
+// so existing accessors like `.Title`, `.Summary`, `.CreateTime`,
+// `.ReadingTimeMin` continue to work unchanged.
+//
+// ViewCount stays at 0 — the view-count subsystem was retired but
+// some themes still reference `{{ if .ViewCount }}`, and a missing
+// field would crash the renderer instead of just being falsy.
+type postCardView struct {
+	*articlepkg.Article
+	Pinned    bool
+	Private   bool
+	AI        bool
+	AILabel   string
+	CoverURL  string
+	ViewCount int
+}
+
+func newPostCardView(a *articlepkg.Article) *postCardView {
+	return &postCardView{
+		Article:  a,
+		Pinned:   a.IsPinned(),
+		Private:  a.IsPrivate(),
+		AI:       a.IsAI(),
+		AILabel:  a.AILabel(),
+		CoverURL: coverURL(a.Cover),
+	}
+}
+
+func newPostCardViews(list articlepkg.Articles) []*postCardView {
+	out := make([]*postCardView, 0, len(list))
+	for _, a := range list {
+		out = append(out, newPostCardView(a))
+	}
+	return out
+}
+
 func newIndexView(groups articlepkg.Articles) indexView {
 	site := newSiteMeta()
 	posts := flattenPosts(groups)
 	now := time.Now()
 
-	var feature *articlepkg.Article
-	var digest, rest articlepkg.Articles
-	if len(posts) > 0 {
-		feature = posts[0]
-		tail := posts[1:]
+	cards := newPostCardViews(posts)
+
+	var feature *postCardView
+	var digest, rest []*postCardView
+	if len(cards) > 0 {
+		feature = cards[0]
+		tail := cards[1:]
 		n := 3
 		if len(tail) < n {
 			n = len(tail)
@@ -326,7 +368,7 @@ func newIndexView(groups articlepkg.Articles) indexView {
 	return indexView{
 		Site:     site,
 		Groups:   groups,
-		Articles: posts,
+		Articles: cards,
 		Year:     now.Year(),
 		Now:      now,
 		Feature:  feature,
