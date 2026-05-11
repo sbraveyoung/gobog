@@ -238,20 +238,26 @@ func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Arti
 // layout) keep working. Group pages get a richer view: title (group name),
 // breadcrumb, sub-articles list — index.html only ever sees the top-level
 // groups, so reusing it for a sub-group landing was always a half-fit.
+//
+// When the fallback to index.html kicks in (letter / press / tufte don't
+// ship a group.html), we pass an indexView built from the group's contents
+// instead of a groupView, because the index templates iterate fields that
+// don't exist on groupView (.Articles, .Feature, .Digest, .Rest, .Tag,
+// .Group, ...). See loadGroupTemplate + newGroupAsIndexView.
 func renderGroup(w http.ResponseWriter, r *http.Request, group *articlepkg.Article, list articlepkg.Articles) {
-	theme := themeFor(r)
-	tplPath := theme + "/group.html"
-	if _, err := os.Stat(tplPath); os.IsNotExist(err) {
-		tplPath = theme + "/index.html"
-	}
-	t, err := parseHTMLTemplate(tplPath)
+	tpl, indexFallback, err := loadGroupTemplate(themeFor(r))
 	if err != nil {
 		logs.Warn("parse group template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	view := newGroupView(group, list)
-	if err := t.Execute(w, view); err != nil {
+	var view interface{}
+	if indexFallback {
+		view = newGroupAsIndexView(group, list)
+	} else {
+		view = newGroupView(group, list)
+	}
+	if err := tpl.Execute(w, view); err != nil {
 		logs.Warn("exec group template:", err)
 	}
 }
