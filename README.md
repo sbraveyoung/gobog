@@ -12,14 +12,48 @@ files) and it does one of two things:
   and exits. The output is drop-in compatible with GitHub Pages.
 
 ```
-Obsidian vault            gobog                       reader
-─────────────────  ────►  ───────────────  ────────►  HTML
-   Blog/                  Live HTTP server            (or)
-     Hello.md             OR                          GitHub Pages
-     Tech/                gobog -export ./dist        (drag the dist into
-       HTTP.md                                         <user>.github.io)
-     about/me.md
+Obsidian vault                gobog                       reader
+─────────────────────  ────►  ───────────────  ────────►  HTML
+   Blog/                      Live HTTP server            (or)
+     post/                    OR                          GitHub Pages
+       Hello.md               gobog -export ./dist        (drag the dist into
+       Tech/HTTP.md                                        <user>.github.io)
+     pages/about.md
+     resource/image/foo.png
 ```
+
+## Vault directory contract
+
+`[blog].source` points at a folder shaped like:
+
+| Path                              | Role                                            |
+| --------------------------------- | ----------------------------------------------- |
+| `<source>/post/...`               | Articles (recursive). Sub-dirs become groups.   |
+| `<source>/pages/<name>.md`        | Top-level pages. Each renders at `/<name>`.     |
+| `<source>/resource/image/...`     | Images / attachments. Served under `/image/`.   |
+
+The legacy `<source>/about/` and `<source>/image/` layouts are still honored
+for backward compatibility, but new vaults should use the canonical paths.
+
+## Themes
+
+Three themes ship in-tree:
+
+| Theme               | Vibe                          |
+| ------------------- | ----------------------------- |
+| `themes/minimal`    | Default. Black-ink, neutral.  |
+| `themes/sepia`      | Warm, paper-feel reading.     |
+| `themes/ocean`      | Cool blue, calm.              |
+
+All three share the same templates (`index.html` for the home, `group.html`
+for sub-listings, `post.html` for a single article) and JavaScript. Only
+the CSS color tokens differ. Pick one with `[blog].theme = "themes/<name>"`.
+
+Every theme supports:
+
+- 中文 / English nav toggle (persists in `localStorage`)
+- system dark/light following with a manual override (also persisted)
+- mobile nav, reading-progress bar, auto-built TOC, code-copy button
 
 ## Quick start
 
@@ -43,17 +77,20 @@ so the rest of your notes stay private.
 
 ```
 <source>/
-├── Hello.md                        → /post/hello
-├── Tech/
-│   └── HTTP.md                     → /post/tech/http
-│   └── Networking/
-│       └── TLS.md                  → /post/tech/networking/tls
-├── about/
-│   └── me.md                       → /about     (first .md inside about/)
-├── attachments/
-│   └── diagram.png                 → /image/diagram.png  (resolved by basename)
+├── post/                           articles live here
+│   ├── Hello.md                    → /post/hello
+│   ├── Tech/HTTP.md                → /post/tech/http
+│   └── Tech/Networking/TLS.md      → /post/tech/networking/tls
+├── pages/                          top-level pages
+│   ├── about.md                    → /about
+│   └── contact.md                  → /contact
+├── resource/image/                 attachments
+│   └── diagram.png                 → /image/diagram.png
 └── .obsidian/                      ignored (any dotfile / dotdir is skipped)
 ```
+
+Legacy `<source>/image/` is still resolved as a fallback. Empty folders
+under `post/` are dropped from listings automatically.
 
 The URL path is derived from the relative file path, slugified per segment
 (lowercase + ASCII; CJK-only segments fall back to a stable CRC32 hex so URLs
@@ -67,6 +104,25 @@ encounters a note that's missing `id` / `url` / `title` / `create_time`,
 it fills them in deterministically and **persists them back to the `.md`
 file** so URLs stay stable across renames and moves. This is original
 gobog product design, retained.
+
+## Themes
+
+Three themes ship in-tree. Pick one with `[blog].theme = "themes/<name>"`.
+
+| Theme              | Vibe                            |
+| ------------------ | ------------------------------- |
+| `themes/minimal`   | Default. Black-ink, neutral.    |
+| `themes/sepia`     | Warm, paper-feel reading.       |
+| `themes/ocean`     | Cool blue, calm.                |
+
+All three share the same templates (`index.html`, `group.html`, `post.html`)
+and JavaScript — only the CSS color tokens differ. Each supports:
+
+- system dark/light auto-follow + manual toggle (persists in `localStorage`)
+- 中文 / English nav toggle (also persisted)
+- mobile-friendly header, reading-progress bar, code-copy button
+- a TOC sidebar on viewports ≥ 1100px; hidden on narrower screens so it
+  never overlays the article body when scrolling
 
 ## Front-matter
 
@@ -87,7 +143,10 @@ draft: true                            # excluded from listings unless include_d
 hidden: true                           # like draft, semantically "temporarily off"
 private: true                          # listed but body needs HTTP Basic auth
 pin: true                              # sticks to the top of its containing listing
-ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI"
+ai: true                               # → "🤖 AI 辅助"   (default truthy)
+                                       # ai: generated → "🤖 AI 生成"
+                                       # ai: edited    → "🤖 AI 校对"
+                                       # ai: claude    → "🤖 claude"   (model byline, verbatim)
 ---
 
 Body markdown here. **Bold**, *italics*, [links](https://example.com),
@@ -109,8 +168,8 @@ Unresolved [[...]] degrades to plain text — never broken anchors.
 | --- | --- |
 | `/` | Homepage; lists top-level posts + groups with summary, date, reading time, tags. |
 | `/post/<slug>` | Leaf post (rendered with `post.html`). |
-| `/post/<group>` | Group landing (rendered with `index.html`, lists sub-posts recursively). |
-| `/about` | First `.md` under `<source>/about/`. |
+| `/post/<group>` | Group landing (rendered with `group.html`, falls back to `index.html`). |
+| `/<page>` | Top-level page (`pages/<page>.md`). Rendered with `post.html`. |
 | `/tag/` | List of all tags. |
 | `/tag/<name>` | Posts tagged `<name>`. |
 | `/search?query=<q>` | In-memory search (title 10 / tag 5 / body 1 weights). |
@@ -129,7 +188,7 @@ Unresolved [[...]] degrades to plain text — never broken anchors.
 [blog]
 domain          = "https://example.com"  # used for canonical / atom / sitemap
 title, subtitle, description, author     # site metadata
-theme           = "themes/simple"
+theme           = "themes/minimal"       # or themes/sepia | themes/ocean
 source          = "/path/to/your/Vault/Blog"
 layout          = "vault"                # vault (default) | legacy — URL strategy only; scan is always recursive
 exclude_dirs    = []                     # vault top-level dirs to skip

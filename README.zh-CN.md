@@ -12,13 +12,14 @@
   输出可直接丢给 GitHub Pages。
 
 ```
-Obsidian vault          gobog                       读者
-─────────────────  ─►   ───────────────  ─────────► HTML
-   Blog/                动态 HTTP 服务              （或者）
-     Hello.md           或者                        GitHub Pages
-     Tech/              gobog -export ./dist        （把 dist 推到
-       HTTP.md                                         <user>.github.io）
-     about/me.md
+Obsidian vault              gobog                       读者
+─────────────────────  ─►   ───────────────  ─────────► HTML
+   Blog/                    动态 HTTP 服务              （或者）
+     post/                  或者                        GitHub Pages
+       Hello.md             gobog -export ./dist        （把 dist 推到
+       Tech/HTTP.md                                        <user>.github.io）
+     pages/about.md
+     resource/image/foo.png
 ```
 
 ## 快速开始
@@ -42,17 +43,20 @@ make build                                          # 产出 ./gobog
 
 ```
 <source>/
-├── Hello.md                        → /post/hello
-├── Tech/
-│   └── HTTP.md                     → /post/tech/http
-│   └── Networking/
-│       └── TLS.md                  → /post/tech/networking/tls
-├── about/
-│   └── me.md                       → /about     （about/ 下第一个 .md）
-├── attachments/
-│   └── diagram.png                 → /image/diagram.png  （按 basename 解析）
+├── post/                           文章都放这里
+│   ├── Hello.md                    → /post/hello
+│   ├── Tech/HTTP.md                → /post/tech/http
+│   └── Tech/Networking/TLS.md      → /post/tech/networking/tls
+├── pages/                          顶层独立页面
+│   ├── about.md                    → /about
+│   └── contact.md                  → /contact
+├── resource/image/                 图片 / 附件
+│   └── diagram.png                 → /image/diagram.png
 └── .obsidian/                      跳过（任何点开头的文件 / 目录都跳过）
 ```
+
+老版本的 `<source>/image/` 仍然作为兜底解析。`post/` 下空目录会被自动从
+列表里剔除。
 
 URL 路径来自相对文件路径，每段做 slug 化（小写 + ASCII；纯 CJK 段会回退到稳定的
 CRC32 hex，保证 URL 始终可寻址）。
@@ -63,6 +67,24 @@ CRC32 hex，保证 URL 始终可寻址）。
 扫到缺 `id` / `url` / `title` / `create_time` 的笔记时，扫描器会按既定规则
 补齐并**写回 `.md` 文件**——这是 gobog 的产品设计，URL 钉死后即使你把文件
 改名或移动也不会变。
+
+## 主题
+
+仓库自带三套主题，通过 `[blog].theme = "themes/<name>"` 选择：
+
+| 主题               | 风格                                |
+| ------------------ | ----------------------------------- |
+| `themes/minimal`   | 默认主题，黑白极简                  |
+| `themes/sepia`     | 暖色调，类似纸质阅读体验            |
+| `themes/ocean`     | 冷蓝调，安静耐看                    |
+
+三套主题共享 HTML 模板（`index.html`、`group.html`、`post.html`）和
+JavaScript，只是 CSS 颜色 token 不同。每个主题都支持：
+
+- 自动跟随系统深色 / 浅色，也支持手动切换（`localStorage` 持久化）
+- 中文 / English 导航切换（同样持久化）
+- 移动端友好的导航栏、阅读进度条、代码块复制按钮
+- 桌面端（视口 ≥ 1100px）右侧目录侧边栏；窄屏自动隐藏，避免上滑时遮挡正文
 
 ## Front-matter
 
@@ -83,7 +105,10 @@ draft: true                            # 排除在列表之外（除非 include_
 hidden: true                           # 跟 draft 类似，语义上是"暂时下线"
 private: true                          # 列出但正文需要 HTTP Basic 认证
 pin: true                              # 置顶到所属列表的开头
-ai: claude                             # 显示 🤖 角标 + 模型名；ai: true 显示 "🤖 AI"
+ai: true                               # → "🤖 AI 辅助"   （truthy 默认）
+                                       # ai: generated → "🤖 AI 生成"
+                                       # ai: edited    → "🤖 AI 校对"
+                                       # ai: claude    → "🤖 claude"   （模型署名，原样显示）
 ---
 
 正文 markdown。**粗体**、*斜体*、[链接](https://example.com)、围栏代码块、表格、
@@ -105,8 +130,8 @@ Obsidian wikilink 会基于源目录解析：
 | --- | --- |
 | `/` | 首页；列出顶级 posts 和 group，带摘要 / 日期 / 阅读时长 / tags |
 | `/post/<slug>` | 文章详情页（用 `post.html` 渲染） |
-| `/post/<group>` | 分组着陆页（用 `index.html` 渲染，递归列出子文章） |
-| `/about` | `<source>/about/` 下第一个 `.md` |
+| `/post/<group>` | 分组着陆页（用 `group.html` 渲染，缺失时回落到 `index.html`） |
+| `/<page>` | 顶层页面 (`pages/<page>.md`)。用 `post.html` 渲染 |
 | `/tag/` | 所有标签列表 |
 | `/tag/<name>` | 含该标签的文章列表 |
 | `/search?query=<q>` | 内存搜索（标题权重 10 / 标签 5 / 正文 1） |
@@ -125,7 +150,7 @@ Obsidian wikilink 会基于源目录解析：
 [blog]
 domain          = "https://example.com"  # 用于 canonical / atom / sitemap
 title, subtitle, description, author     # 站点元信息
-theme           = "themes/simple"
+theme           = "themes/minimal"       # 或 themes/sepia | themes/ocean
 source          = "/path/to/your/Vault/Blog"
 layout          = "vault"                # vault（默认）| legacy — 只决定 URL 生成策略；扫描始终递归
 exclude_dirs    = []                     # 顶级要跳过的目录名

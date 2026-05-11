@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ .Title }} · {{ .Site.Title }}</title>
+<link rel="icon" href="/css/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml" title="Atom feed">
+<link rel="stylesheet" href="/css/main.css">
+<link rel="canonical" href="{{ .Canonical }}">
+<meta name="description" content="{{ html .Description }}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ html .Title }}">
+<meta property="og:url" content="{{ .Canonical }}">
+<meta property="og:description" content="{{ html .Description }}">
+{{ if .CoverURL }}<meta property="og:image" content="{{ .CoverURL }}">{{ end }}
+<script>
+(function () {
+  var saved = localStorage.getItem("gobog-theme");
+  var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (saved === "dark" || (saved === null && prefersDark)) document.documentElement.setAttribute("data-theme", "dark");
+  else if (saved === "light") document.documentElement.setAttribute("data-theme", "light");
+  var lang = localStorage.getItem("gobog-lang");
+  if (lang) document.documentElement.setAttribute("lang", lang);
+})();
+</script>
+</head>
+<body>
+
+<div class="reading-progress" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="row">
+    <a class="brand" href="/" aria-label="home">
+      <svg class="brand-mark" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><use href="/css/icon.svg#mark"/></svg>
+      <span class="brand-text">{{ .Site.Title }}</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-label="menu" aria-expanded="false">≡</button>
+    <nav class="site-nav">
+      <a href="/">Home</a>
+      {{ range .Site.Pages }}<a href="{{ .URL }}">{{ .Title }}</a>{{ end }}
+      <a href="/atom.xml">RSS</a>
+      <button class="lang-toggle icon-btn" type="button" aria-label="language">
+        <span class="lang-zh">中</span><span class="lang-en">EN</span>
+      </button>
+      <button class="theme-toggle icon-btn" type="button" aria-label="theme">
+        <span class="theme-icon-light">☀</span><span class="theme-icon-dark">☾</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main class="page page-post">
+  <article class="post">
+    {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
+    <header class="post-head">
+      <div class="post-meta">
+        {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
+        {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
+        {{ if .AI }}<span class="badge badge-ai" title="{{ .AILabel }}">🤖 {{ .AILabel }}</span>{{ end }}
+        {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
+        {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
+        {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
+        {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
+      </div>
+    </header>
+
+    <div class="post-body">{{ .Parse }}</div>
+
+    <footer class="post-foot">
+      <a class="back-home" href="/">← back</a>
+    </footer>
+  </article>
+</main>
+
+<!-- Floating TOC: button bottom-right, drawer slides in from the right.
+     Works identically across viewports. JS hides the button entirely when
+     the article has fewer than 3 headings (no point of navigation). -->
+<button class="toc-toggle" type="button" aria-controls="post-toc" aria-expanded="false" aria-label="Open table of contents" hidden>
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <path d="M4 6h16M4 12h16M4 18h10"/>
+  </svg>
+</button>
+<aside class="post-toc" id="post-toc" hidden aria-label="Table of contents">
+  <header class="post-toc-head">
+    <h2>目录 · Contents</h2>
+    <button class="toc-close" type="button" aria-label="Close">✕</button>
+  </header>
+  <ol class="post-toc-list"></ol>
+</aside>
+<div class="toc-backdrop" hidden></div>
+
+{{ if .Site.Comments.Enabled }}
+<section class="post-comments">
+  <h2 class="post-comments-title">评论 · Comments</h2>
+  <script src="https://giscus.app/client.js"
+    data-repo="{{ .Site.Comments.Repo }}"
+    data-repo-id="{{ .Site.Comments.RepoID }}"
+    data-category="{{ .Site.Comments.Category }}"
+    data-category-id="{{ .Site.Comments.CategoryID }}"
+    data-mapping="{{ .Site.Comments.Mapping }}"
+    data-strict="0"
+    data-reactions-enabled="{{ .Site.Comments.ReactionsEnabled }}"
+    data-emit-metadata="0"
+    data-input-position="{{ .Site.Comments.InputPosition }}"
+    data-theme="preferred_color_scheme"
+    data-lang="zh-CN"
+    crossorigin="anonymous"
+    async></script>
+</section>
+{{ end }}
+
+<footer class="site-footer">
+  <div class="row">
+    <span>© {{ .Site.Year }} {{ .Site.Author }}</span>
+    <span class="dot">·</span>
+    <span>powered by <a href="https://github.com/sbraveyoung/gobog">gobog</a></span>
+  </div>
+</footer>
+
+<script src="/js/site.js" defer></script>
+</body>
+</html>

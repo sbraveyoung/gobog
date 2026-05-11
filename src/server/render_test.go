@@ -85,3 +85,24 @@ func TestExpandWikilinks(t *testing.T) {
 		})
 	}
 }
+
+// TestProtectMath ensures `$$...$$` blocks survive goldmark unchanged so
+// MathJax sees the original `\begin{matrix} ... \\ ... \end{matrix}` form.
+// Without protection goldmark eats one of the row-separating `\\`.
+func TestProtectMath(t *testing.T) {
+	body := []byte("Before\n\n$$\n\\begin{matrix}\n1 & 2 \\\\\n3 & 4\n\\end{matrix}\n$$\n\nAfter\n")
+	protected, stash := protectMath(body)
+	if strings.Contains(string(protected), "\\begin{matrix}") {
+		t.Fatalf("protectMath did not stash the math block: %s", protected)
+	}
+	if len(stash) != 1 {
+		t.Errorf("expected 1 math block, got %d", len(stash))
+	}
+	restored := restoreMath(string(protected), stash)
+	if !strings.Contains(restored, "1 & 2 \\\\") {
+		t.Errorf("restoreMath lost the row-separating backslashes: %s", restored)
+	}
+	if !strings.Contains(restored, "\\end{matrix}") {
+		t.Errorf("restoreMath lost the end delimiter: %s", restored)
+	}
+}

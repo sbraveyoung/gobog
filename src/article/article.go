@@ -57,7 +57,11 @@ type Meta struct {
 	// Cover is an optional hero image — relative path resolved against the
 	// blog's image index, or an absolute URL. Renders at the top of the
 	// post page and is also used for OG meta.
-	Cover         string `meta:"cover"`
+	Cover string `meta:"cover"`
+	// Order, when present, makes the article participate in a sequential
+	// (series-style) ordering inside its parent group. Integer-as-string.
+	// See SeriesOrderKey + IsSequentialSeries in blog.go.
+	Order         string `meta:"order"`
 	TyporaRootURL string `meta:"typora-root-url"`
 }
 
@@ -114,22 +118,88 @@ func (a *Article) IsAI() bool {
 	return true
 }
 
-// AILabel returns the human-facing badge text. For truthy keywords it
-// returns "AI"; otherwise the verbatim trimmed value (so "claude" renders
-// as "🤖 claude" while `ai: true` renders as just "🤖 AI"). Returns "" when
-// IsAI is false.
+// AILabel returns the human-facing badge text. The intent borrows IPTC's
+// three-tier digitalSourceType vocabulary (trained / composite / enhanced)
+// in plain Chinese:
+//
+//	front-matter `ai:` value         badge        meaning
+//	──────────────────────────────   ──────────   ─────────────────────────────
+//	true / yes / 1 / on / assisted   AI 辅助       human-led, AI helped along
+//	generated / wrote / written      AI 生成       AI-led, human reviewed/edited
+//	edited / reviewed / polished     AI 校对       human-written, AI polished
+//	<anything else non-empty>        <verbatim>   model byline ("claude", "gpt-4o", …)
+//	false / no / 0 / off / empty     (no badge)
+//
+// Defaulting truthy values to "AI 辅助" matches the most idiomatic Chinese
+// tech-blog convention (sspai et al.) and keeps the badge to two
+// characters so it fits naturally in the post-meta strip.
 func (a *Article) AILabel() string {
 	if !a.IsAI() {
 		return ""
 	}
 	v := strings.TrimSpace(a.AI)
-	if truthy(v) {
-		return "AI"
+	switch strings.ToLower(v) {
+	case "true", "yes", "1", "on", "assisted", "assist", "ai-assisted":
+		return "AI 辅助"
+	case "generated", "ai-generated", "wrote", "written":
+		return "AI 生成"
+	case "edited", "ai-edited", "reviewed", "polished", "proofread":
+		return "AI 校对"
 	}
 	return v
 }
 
 func (a *Article) IsGroup() bool { return len(a.SubArticle) > 0 }
+
+// SeriesOrderKey returns the article's position in a sequential series.
+// Resolution order:
+//
+//  1. front-matter `order: <n>` — explicit and wins.
+//  2. leading digits in the file basename — `00-导读.md` → 0, `12-foo.md`
+//     → 12. Handles the common Obsidian convention of prefixing series
+//     chapters with two-digit numbers.
+//  3. -1, meaning "no series signal" — the article should sort by date,
+//     not by sequence.
+//
+// Used by blog.loadGroupDir to decide whether a group is a series (all
+// leaves return ≥ 0) and how to order it.
+func (a *Article) SeriesOrderKey() int {
+	if v := strings.TrimSpace(a.Order); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	if a.Source != "" {
+		base := a.Source
+		if i := strings.LastIndexAny(base, "/\\"); i >= 0 {
+			base = base[i+1:]
+		}
+		base = strings.TrimSuffix(base, ".md")
+		n, ok := leadingDigits(base)
+		if ok {
+			return n
+		}
+	}
+	return -1
+}
+
+// leadingDigits parses 0+ leading ASCII digits from s. Returns the parsed
+// integer and true when at least one digit was found; (0, false) otherwise.
+func leadingDigits(s string) (int, bool) {
+	n := 0
+	any := false
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			break
+		}
+		n = n*10 + int(r-'0')
+		any = true
+		if n > 1<<20 {
+			break // pathologically long prefix; cap so we don't overflow
+		}
+	}
+	return n, any
+}
 
 // truthy interprets common YAML-ish booleans (true / 1 / yes / on, any case)
 // as true; everything else (including empty) is false.
@@ -145,15 +215,19 @@ type Articles []*Article
 
 func (a Articles) Len() int      { return len(a) }
 func (a Articles) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+
+// Less drives the default Articles sort: pinned first, then newest-first by
+// CreateTime. Groups and leaf articles are mixed together — group dates
+// already track their newest sub-article (set in blog.loadGroupDir), so a
+// series that gets a new chapter floats back to the top naturally. The
+// older "groups always above leaves" rule buried fresh standalone posts
+// below every series; we don't do that any more.
+//
+// Series groups (`AI 入门到精通系列`-style) want ascending sequential
+// order instead of date-desc. Those re-sort with a different comparator
+// inside loadGroupDir — Less here only governs the default listings
+// (home, tags, search).
 func (a Articles) Less(i, j int) bool {
-	// Groups (directories) before leaves so navigation stays stable.
-	if a[i].SubArticle == nil && a[j].SubArticle != nil {
-		return false
-	}
-	if a[i].SubArticle != nil && a[j].SubArticle == nil {
-		return true
-	}
-	// Pinned articles bubble to the top within the same kind.
 	if a[i].IsPinned() != a[j].IsPinned() {
 		return a[i].IsPinned()
 	}

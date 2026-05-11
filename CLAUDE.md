@@ -40,8 +40,8 @@ Routes wired in `Server.newHandler()`:
 | Route | Behaviour |
 | --- | --- |
 | `/` | renders `theme/index.html` with the post group list |
-| `/post/...` | matches the deepest article whose `URL` is a prefix of the request; group → renders sub-list with `index.html`, leaf → renders `post.html` |
-| `/about` | first article from the `about` list, rendered through `post.html` |
+| `/post/...` | matches the deepest article whose `URL` is a prefix of the request; group → renders `group.html` (falling back to `index.html`), leaf → renders `post.html` |
+| `/<page>` | any path that doesn't hit a more specific route is matched against `<source>/pages/<page>.md` (`pages/about.md` → `/about`, etc.). Rendered through `post.html`. |
 | `/tag/` and `/tag/<name>` | tag index and per-tag listing (uses the precomputed `byTag` map) |
 | `/search?query=...` | in-memory scoring (title 10, tag 5, body 1) |
 | `/atom.xml`, `/sitemap.xml`, `/robots.txt` | feed + SEO endpoints (see `src/server/feed.go`); private posts are filtered out |
@@ -99,7 +99,7 @@ The visibility quartet is governed by a shared `truthy` helper (case-insensitive
 - `IsHidden()` — temporarily off; excluded from listings unless `[blog].include_hidden`. Mechanically the same as Draft today; the distinction is purely semantic for the author.
 - `IsPrivate()` — listed in indexes but the body is gated by HTTP Basic auth (see `[auth]`). Filtered out of `atom.xml`, `sitemap.xml`, and the static export entirely (no auth on a static host).
 - `IsPinned()` — sticks the article to the top of its containing listing, overriding the usual create_time descending order. The `Articles` sort considers the pinned bit before the date.
-- `IsAI()` / `AILabel()` — `ai:` front-matter marks AI-generated / -assisted content. Truthy values render a generic "🤖 AI" badge; any other non-empty, non-falsy string is treated as a model name and shown verbatim ("🤖 claude", "🤖 GPT-4o"). Authors can write `ai: false` to mean "I wrote this myself".
+- `IsAI()` / `AILabel()` — `ai:` front-matter marks how AI was involved. The vocabulary borrows IPTC's three-tier digitalSourceType in plain Chinese: truthy keywords (`true` / `yes` / `1` / `on` / `assisted`) → "🤖 AI 辅助" (human-led); `generated` / `wrote` / `written` → "🤖 AI 生成" (AI-led, human reviewed); `edited` / `reviewed` / `polished` / `proofread` → "🤖 AI 校对" (AI polished). Anything else non-empty (e.g. `ai: claude`, `ai: gpt-4o`) is treated as a model byline and shown verbatim. Authors can write `ai: false` to mean "I wrote this myself".
 - `Cover` — front-matter `cover:` value, surfaced as `articleView.CoverURL`. Bare names get prefixed with `/image/`; absolute URLs (`http(s)://`, `/...`) pass through. Renders as a hero image at the top of post.html and as `og:image` for social previews.
 
 `Slugify(s)` returns a kebab-case ASCII slug; `SlugOrHash(s)` falls back to a stable CRC32 hex when the slug is empty (e.g. CJK-only titles), so URLs are always addressable.
@@ -145,7 +145,13 @@ outDir/
 
 The Dockerfile uses `sed` to substitute `${YOUR_CERT_PATH}`, `${YOUR_SOURCE_PATH}`, and `${IMAGE_PATH}` placeholders at build time — keep those placeholder strings in sync between `conf/config.toml`, `script/export.sh`, and `dockerfile` if you rename them.
 
-The blog content directory (`[blog].source`) is expected to contain subdirectories named after `BlogTypes` keys in `src/blog/blog.go` (currently `post/` and `about/`). Adding a new type means extending that map — `Reload` returns an error and startup aborts if a type's directory is missing.
+The blog content directory (`[blog].source`) follows a fixed three-folder contract:
+
+- `<source>/post/...` — articles (recursive). Each sub-directory is a group.
+- `<source>/pages/<name>.md` — top-level pages. Each file renders at `/<name>` (e.g. `pages/about.md` → `/about`). Sub-directories under `pages/` are ignored — useful for stashing drafts that aren't ready.
+- `<source>/resource/image/...` — images and other binary attachments. Served under `/image/...`. Legacy `<source>/image/` is still honored for back-compat.
+
+`BlogTypes` in `src/blog/blog.go` maps the logical name (`post`, `page`) to its on-disk folder.
 
 ## Testing
 

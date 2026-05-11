@@ -49,7 +49,7 @@ func Export(outDir string) error {
 	if err := exportIndex(outDir); err != nil {
 		return err
 	}
-	if err := exportAbout(outDir); err != nil {
+	if err := exportPages(outDir); err != nil {
 		return err
 	}
 	if err := exportPosts(outDir); err != nil {
@@ -81,30 +81,37 @@ func exportIndex(outDir string) error {
 		return fmt.Errorf("parse index template: %w", err)
 	}
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, withoutPrivate(blog.Blog.Groups())); err != nil {
+	view := newIndexView(withoutPrivate(blog.Blog.Groups()))
+	if err := t.Execute(&buf, view); err != nil {
 		return fmt.Errorf("exec index template: %w", err)
 	}
 	return writeFile(filepath.Join(outDir, "index.html"), buf.Bytes())
 }
 
-func exportAbout(outDir string) error {
-	list := blog.Blog.Articles(blog.BlogTypes["about"])
-	if len(list) == 0 {
-		return nil
+// exportPages renders every <source>/pages/*.md as /<basename>/index.html.
+// Private pages are dropped (no auth enforcement on a static host).
+func exportPages(outDir string) error {
+	for _, p := range blog.Blog.Articles(blog.BlogTypes["page"]) {
+		if p.IsPrivate() {
+			continue
+		}
+		html, err := renderArticleHTML(p)
+		if err != nil {
+			return err
+		}
+		body, err := executePostTemplate(p, html)
+		if err != nil {
+			return err
+		}
+		if err := writeFile(urlToFile(outDir, p.URL), body); err != nil {
+			return err
+		}
 	}
-	html, err := renderArticleHTML(list[0])
-	if err != nil {
-		return err
-	}
-	body, err := executePostTemplate(list[0], html)
-	if err != nil {
-		return err
-	}
-	return writeFile(filepath.Join(outDir, "about", "index.html"), body)
+	return nil
 }
 
 func exportPosts(outDir string) error {
-	groupTpl, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	groupTpl, err := loadGroupTemplate()
 	if err != nil {
 		return err
 	}
@@ -132,7 +139,8 @@ func exportPosts(outDir string) error {
 				continue
 			}
 			var buf bytes.Buffer
-			if err := groupTpl.Execute(&buf, subs); err != nil {
+			view := newGroupView(a, subs)
+			if err := groupTpl.Execute(&buf, view); err != nil {
 				return err
 			}
 			if err := writeFile(urlToFile(outDir, a.URL), buf.Bytes()); err != nil {
@@ -145,6 +153,17 @@ func exportPosts(outDir string) error {
 		return nil
 	}
 	return walk(blog.Blog.Groups())
+}
+
+// loadGroupTemplate prefers theme/group.html for sub-listings and falls back
+// to theme/index.html so themes that haven't split out a group template
+// keep rendering.
+func loadGroupTemplate() (*template.Template, error) {
+	groupPath := config.C.Blog.Theme + "/group.html"
+	if _, err := os.Stat(groupPath); err == nil {
+		return template.ParseFiles(groupPath)
+	}
+	return template.ParseFiles(config.C.Blog.Theme + "/index.html")
 }
 
 // withoutPrivate returns a shallow copy of list with private articles
@@ -187,7 +206,7 @@ func exportTags(outDir string) error {
 	if len(tags) == 0 {
 		return nil
 	}
-	t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	t, err := loadGroupTemplate()
 	if err != nil {
 		return err
 	}
@@ -196,8 +215,12 @@ func exportTags(outDir string) error {
 		if len(filtered) == 0 {
 			continue
 		}
+		synthetic := &articlepkg.Article{}
+		synthetic.Title = "#" + tag
+		synthetic.URL = "/tag/" + tag
 		var buf bytes.Buffer
-		if err := t.Execute(&buf, filtered); err != nil {
+		view := newGroupView(synthetic, filtered)
+		if err := t.Execute(&buf, view); err != nil {
 			return err
 		}
 		if err := writeFile(filepath.Join(outDir, "tag", tag, "index.html"), buf.Bytes()); err != nil {
@@ -286,17 +309,23 @@ func copyAssets(outDir string) error {
 		}
 	}
 
-	// Legacy <source>/image/ keeps working as before.
-	legacyImg := filepath.Join(config.C.Blog.Source, "image")
-	if fi, err := os.Stat(legacyImg); err == nil && fi.IsDir() {
-		if err := copyTree(legacyImg, filepath.Join(outDir, "image")); err != nil {
-			return fmt.Errorf("copy %s: %w", legacyImg, err)
+	// New canonical layout: <source>/resource/image/. Anything under it is
+	// copied wholesale to <outDir>/image/. We also still honor the legacy
+	// <source>/image/ tree for repos that haven't migrated yet.
+	for _, prefix := range []string{
+		filepath.Join("resource", "image"),
+		"image",
+	} {
+		dir := filepath.Join(config.C.Blog.Source, prefix)
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			if err := copyTree(dir, filepath.Join(outDir, "image")); err != nil {
+				return fmt.Errorf("copy %s: %w", dir, err)
+			}
 		}
 	}
 
-	// Vault mode: every non-.md file referenced by the image index gets
-	// copied to <outDir>/image/<rel-path>, preserving its layout so URLs
-	// like /image/Tech/Networking/diagram.png stay valid offline.
+	// Vault fallback: every non-.md file referenced by the image index that
+	// isn't already covered above gets copied to <outDir>/image/<rel-path>.
 	source := config.C.Blog.Source
 	return filepath.Walk(source, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -316,8 +345,9 @@ func copyAssets(outDir string) error {
 		if err != nil {
 			return nil
 		}
-		// Don't double-copy the legacy <source>/image/ tree.
-		if strings.HasPrefix(filepath.ToSlash(rel), "image/") {
+		relSlash := filepath.ToSlash(rel)
+		// Skip what the canonical / legacy copies above already handled.
+		if strings.HasPrefix(relSlash, "resource/image/") || strings.HasPrefix(relSlash, "image/") {
 			return nil
 		}
 		return copyFile(p, filepath.Join(outDir, "image", rel))
