@@ -275,7 +275,7 @@ func exportPages(outDir string) error {
 }
 
 func exportPosts(outDir string) error {
-	groupTpl, err := loadGroupTemplate()
+	groupTpl, indexFallback, err := loadGroupTemplate(config.C.Blog.Theme)
 	if err != nil {
 		return err
 	}
@@ -303,7 +303,12 @@ func exportPosts(outDir string) error {
 				continue
 			}
 			var buf bytes.Buffer
-			view := newGroupView(a, subs)
+			var view interface{}
+			if indexFallback {
+				view = newGroupAsIndexView(a, subs)
+			} else {
+				view = newGroupView(a, subs)
+			}
 			if err := groupTpl.Execute(&buf, view); err != nil {
 				return err
 			}
@@ -319,15 +324,20 @@ func exportPosts(outDir string) error {
 	return walk(blog.Blog.Groups())
 }
 
-// loadGroupTemplate prefers theme/group.html for sub-listings and falls back
-// to theme/index.html so themes that haven't split out a group template
-// keep rendering.
-func loadGroupTemplate() (*template.Template, error) {
-	groupPath := config.C.Blog.Theme + "/group.html"
+// loadGroupTemplate prefers <theme>/group.html for sub-listings and falls
+// back to <theme>/index.html so themes that haven't split out a group
+// template keep rendering. The returned bool is true when the fallback
+// path was taken — callers MUST pass an indexView in that case because
+// index templates iterate fields that aren't on groupView (.Articles,
+// .Feature, .Digest, .Rest, .Tag, .Group, ...).
+func loadGroupTemplate(theme string) (*template.Template, bool, error) {
+	groupPath := theme + "/group.html"
 	if _, err := os.Stat(groupPath); err == nil {
-		return parseHTMLTemplate(groupPath)
+		t, err := parseHTMLTemplate(groupPath)
+		return t, false, err
 	}
-	return parseHTMLTemplate(config.C.Blog.Theme + "/index.html")
+	t, err := parseHTMLTemplate(theme + "/index.html")
+	return t, true, err
 }
 
 // withoutPrivate returns a shallow copy of list with private articles
@@ -370,7 +380,7 @@ func exportTags(outDir string) error {
 	if len(tags) == 0 {
 		return nil
 	}
-	t, err := loadGroupTemplate()
+	t, indexFallback, err := loadGroupTemplate(config.C.Blog.Theme)
 	if err != nil {
 		return err
 	}
@@ -383,7 +393,12 @@ func exportTags(outDir string) error {
 		synthetic.Title = "#" + tag
 		synthetic.URL = "/tag/" + tag
 		var buf bytes.Buffer
-		view := newGroupView(synthetic, filtered)
+		var view interface{}
+		if indexFallback {
+			view = newGroupAsIndexView(synthetic, filtered)
+		} else {
+			view = newGroupView(synthetic, filtered)
+		}
 		if err := t.Execute(&buf, view); err != nil {
 			return err
 		}
