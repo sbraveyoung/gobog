@@ -93,3 +93,71 @@ func TestThemeForNilRequest(t *testing.T) {
 		t.Errorf("themeFor(nil): got %q want %q", got, "themes/minimal")
 	}
 }
+
+func TestRewritePathsInHTML(t *testing.T) {
+	tests := []struct {
+		name, in, prefix, want string
+	}{
+		{
+			name:   "internal href gets prefixed",
+			in:     `<a href="/post/abc">go</a>`,
+			prefix: "/__themes/letter",
+			want:   `<a href="/__themes/letter/post/abc">go</a>`,
+		},
+		{
+			name:   "internal src gets prefixed",
+			in:     `<img src="/image/cover.png">`,
+			prefix: "/__themes/letter",
+			want:   `<img src="/__themes/letter/image/cover.png">`,
+		},
+		{
+			name:   "protocol-relative is untouched",
+			in:     `<script src="//cdn.example.com/x.js"></script>`,
+			prefix: "/__themes/letter",
+			want:   `<script src="//cdn.example.com/x.js"></script>`,
+		},
+		{
+			name:   "external URL untouched",
+			in:     `<a href="https://example.com/foo">x</a>`,
+			prefix: "/__themes/letter",
+			want:   `<a href="https://example.com/foo">x</a>`,
+		},
+		{
+			name:   "themes.json stays at root",
+			in:     `<script>fetch("/__themes.json")</script><a href="/__themes.json">m</a>`,
+			prefix: "/__themes/letter",
+			want:   `<script>fetch("/__themes.json")</script><a href="/__themes.json">m</a>`,
+		},
+		{
+			name:   "switcher script stays at root",
+			in:     `<script src="/__theme-switcher.js" defer></script>`,
+			prefix: "/__themes/letter",
+			want:   `<script src="/__theme-switcher.js" defer></script>`,
+		},
+		{
+			name:   "already-prefixed theme path is not double-prefixed",
+			in:     `<a href="/__themes/tufte/post/a">other</a>`,
+			prefix: "/__themes/letter",
+			want:   `<a href="/__themes/tufte/post/a">other</a>`,
+		},
+		{
+			name:   "form action gets prefixed",
+			in:     `<form action="/search"></form>`,
+			prefix: "/__themes/letter",
+			want:   `<form action="/__themes/letter/search"></form>`,
+		},
+		{
+			name:   "empty prefix is a no-op",
+			in:     `<a href="/post/abc">x</a>`,
+			prefix: "",
+			want:   `<a href="/post/abc">x</a>`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rewritePathsInHTML(tc.in, tc.prefix); got != tc.want {
+				t.Errorf("rewritePathsInHTML:\n  got:  %s\n  want: %s", got, tc.want)
+			}
+		})
+	}
+}

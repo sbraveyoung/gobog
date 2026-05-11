@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -271,13 +272,93 @@ func newSiteMeta() SiteMeta {
 
 // indexView is what the home template receives. SiteMeta lives under .Site so
 // templates can disambiguate from per-page metadata (group titles, etc.).
+// Several fields below (Tag/Group/Articles/Year/Now/Feature/Digest/Rest/AllTags)
+// exist purely so the newer themes (letter / tufte / press) compile against
+// the same view as the minimal/ocean/sepia themes — without them, switching
+// to a "design-canvas" theme would crash the renderer with
+// `can't evaluate field <name> in type server.indexView`.
 type indexView struct {
 	Site   SiteMeta
 	Groups articlepkg.Articles
+
+	Tag      string
+	Group    string
+	Articles articlepkg.Articles
+	Year     int
+	Now      time.Time
+	Feature  *articlepkg.Article
+	Digest   articlepkg.Articles
+	Rest     articlepkg.Articles
+	AllTags  []TagCount
+}
+
+// TagCount is the {Name, Count} pair the tufte theme iterates over for its
+// tag cloud. Exposed by name so templates can keep `{{.Name}} {{.Count}}`.
+type TagCount struct {
+	Name  string
+	Count int
 }
 
 func newIndexView(groups articlepkg.Articles) indexView {
-	return indexView{Site: newSiteMeta(), Groups: groups}
+	site := newSiteMeta()
+	posts := flattenPosts(groups)
+	now := time.Now()
+
+	var feature *articlepkg.Article
+	var digest, rest articlepkg.Articles
+	if len(posts) > 0 {
+		feature = posts[0]
+		tail := posts[1:]
+		n := 3
+		if len(tail) < n {
+			n = len(tail)
+		}
+		digest = tail[:n]
+		rest = tail[n:]
+	}
+
+	tags := blog.Blog.Tags()
+	allTags := make([]TagCount, 0, len(tags))
+	for _, t := range tags {
+		allTags = append(allTags, TagCount{Name: t, Count: len(blog.Blog.PostsByTag(t))})
+	}
+
+	return indexView{
+		Site:     site,
+		Groups:   groups,
+		Articles: posts,
+		Year:     now.Year(),
+		Now:      now,
+		Feature:  feature,
+		Digest:   digest,
+		Rest:     rest,
+		AllTags:  allTags,
+	}
+}
+
+// flattenPosts walks a group tree and returns every leaf article, sorted by
+// pinned-first then create_time descending. Themes that present a flat
+// "article feed" (letter / tufte / press) iterate over this.
+func flattenPosts(list articlepkg.Articles) articlepkg.Articles {
+	var out articlepkg.Articles
+	var walk func(articlepkg.Articles)
+	walk = func(items articlepkg.Articles) {
+		for _, a := range items {
+			if len(a.SubArticle) == 0 {
+				out = append(out, a)
+			} else {
+				walk(a.SubArticle)
+			}
+		}
+	}
+	walk(list)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].IsPinned() != out[j].IsPinned() {
+			return out[i].IsPinned()
+		}
+		return out[i].CreateTime > out[j].CreateTime
+	})
+	return out
 }
 
 // groupView is what group.html receives for a group landing page (a series,
@@ -318,6 +399,7 @@ type articleView struct {
 	AI          bool
 	AILabel     string
 	CoverURL    string
+	Year        int
 }
 
 func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
@@ -342,6 +424,7 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 		AI:          a.IsAI(),
 		AILabel:     a.AILabel(),
 		CoverURL:    coverURL(a.Cover),
+		Year:        site.Year,
 	}
 }
 

@@ -2,14 +2,39 @@ package server
 
 import (
 	"encoding/json"
+	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	ttemplate "text/template"
 
 	"github.com/sbraveyoung/gobog/src/config"
 )
+
+// templateFuncs is the func map every theme template gets. `add` is used by
+// the press theme's `{{printf "%02d" (add $i 2)}}` numbering; keeping the map
+// global means new themes can rely on it without server-side coordination.
+var templateFuncs = map[string]interface{}{
+	"add": func(a, b int) int { return a + b },
+	"sub": func(a, b int) int { return a - b },
+	"mul": func(a, b int) int { return a * b },
+}
+
+// parseHTMLTemplate loads a theme HTML template (html/template, used for
+// index/group pages where Go must escape interpolations).
+func parseHTMLTemplate(path string) (*template.Template, error) {
+	name := filepath.Base(path)
+	return template.New(name).Funcs(template.FuncMap(templateFuncs)).ParseFiles(path)
+}
+
+// parseTextTemplate loads a theme text template (text/template, used for
+// post.html where the body is pre-rendered HTML and must not be re-escaped).
+func parseTextTemplate(path string) (*ttemplate.Template, error) {
+	name := filepath.Base(path)
+	return ttemplate.New(name).Funcs(ttemplate.FuncMap(templateFuncs)).ParseFiles(path)
+}
 
 // themeCookie is the cookie name used to remember the visitor's theme choice
 // across requests. Its value is the bare theme directory name (e.g. "letter"),
@@ -150,7 +175,18 @@ const themeSwitcherJS = `(function () {
     injectStyle();
 
     var def = data['default'] || '';
-    var current = data.current || def;
+    var isStatic = !!data['static'];
+
+    // In static mode we live inside /__themes/<name>/... — derive the
+    // active theme from the URL prefix so the active state matches what
+    // the user actually sees, not what the manifest happens to claim.
+    var staticMatch = location.pathname.match(/^\/__themes\/([^\/]+)/);
+    var current;
+    if (isStatic) {
+      current = staticMatch ? decodeURIComponent(staticMatch[1]) : def;
+    } else {
+      current = data.current || def;
+    }
 
     var wrap = document.createElement('div');
     wrap.className = 'gobog-ts';
@@ -185,6 +221,21 @@ const themeSwitcherJS = `(function () {
       }
 
       item.addEventListener('click', function () {
+        if (isStatic) {
+          // Static export: no server to read a cookie, so navigate by URL.
+          var path = location.pathname;
+          var m = path.match(/^\/__themes\/[^\/]+(\/.*)?$/);
+          var logical = m ? (m[1] || '/') : path;
+          if (logical === '') logical = '/';
+          var target;
+          if (name === def) {
+            target = logical;
+          } else {
+            target = '/__themes/' + encodeURIComponent(name) + logical;
+          }
+          location.href = target + location.search + location.hash;
+          return;
+        }
         if (name === def) {
           clearCookie();
         } else {
