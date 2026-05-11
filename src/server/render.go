@@ -191,6 +191,30 @@ func escapeMD(s string) string {
 	return strings.NewReplacer("[", `\[`, "]", `\]`).Replace(s)
 }
 
+// tmplTime wraps Article.CreateTime (a string from YAML front-matter) so
+// templates can either print it verbatim (`{{.CreateTime}}`) OR format it
+// (`{{.CreateTime.Format "2006-01-02"}}`). It is a string-kind type rather
+// than a struct so `{{ if .CreateTime }}` keeps treating an empty value as
+// false — a struct would always be truthy and would render an empty `<span>`
+// in themes that gate display on `{{ if .CreateTime }}`.
+type tmplTime string
+
+// Format parses the underlying YAML front-matter timestamp with the canonical
+// `2006-01-02 15:04:05` layout, then re-emits it via Go's time.Format. If the
+// stored value doesn't parse (legacy posts, missing front-matter), Format
+// falls back to the raw string so the page still renders.
+func (t tmplTime) Format(layout string) string {
+	s := string(t)
+	if s == "" {
+		return ""
+	}
+	p, err := time.Parse(articlepkg.TIME_LAYOUT, s)
+	if err != nil {
+		return s
+	}
+	return p.Format(layout)
+}
+
 // SiteMeta is the bundle every page needs in its header / footer: the blog
 // title, top-level pages for nav, the configured author, etc. Built fresh
 // per request from the live blog state so a content reload picks up new
@@ -304,30 +328,37 @@ type TagCount struct {
 // exposes Is{Pinned,Private,AI} methods + a `Cover` raw string, but the
 // new themes use field-style `.Pinned`, `.AI`, `.CoverURL`, etc. The
 // wrapper keeps the article's own fields/methods reachable via embedding
-// so existing accessors like `.Title`, `.Summary`, `.CreateTime`,
-// `.ReadingTimeMin` continue to work unchanged.
+// so existing accessors like `.Title`, `.Summary`, `.ReadingTimeMin`
+// continue to work unchanged.
+//
+// CreateTime shadows the embedded Article.CreateTime (a plain string) with
+// a tmplTime so `{{.CreateTime.Format "2006-01-02"}}` works in
+// letter/press/tufte; minimal/ocean/sepia/simple keep working because
+// tmplTime renders as its underlying string under `{{.CreateTime}}`.
 //
 // ViewCount stays at 0 — the view-count subsystem was retired but
 // some themes still reference `{{ if .ViewCount }}`, and a missing
 // field would crash the renderer instead of just being falsy.
 type postCardView struct {
 	*articlepkg.Article
-	Pinned    bool
-	Private   bool
-	AI        bool
-	AILabel   string
-	CoverURL  string
-	ViewCount int
+	CreateTime tmplTime
+	Pinned     bool
+	Private    bool
+	AI         bool
+	AILabel    string
+	CoverURL   string
+	ViewCount  int
 }
 
 func newPostCardView(a *articlepkg.Article) *postCardView {
 	return &postCardView{
-		Article:  a,
-		Pinned:   a.IsPinned(),
-		Private:  a.IsPrivate(),
-		AI:       a.IsAI(),
-		AILabel:  a.AILabel(),
-		CoverURL: coverURL(a.Cover),
+		Article:    a,
+		CreateTime: tmplTime(a.CreateTime),
+		Pinned:     a.IsPinned(),
+		Private:    a.IsPrivate(),
+		AI:         a.IsAI(),
+		AILabel:    a.AILabel(),
+		CoverURL:   coverURL(a.Cover),
 	}
 }
 
@@ -426,6 +457,11 @@ func newGroupView(group *articlepkg.Article, list articlepkg.Articles) groupView
 // lets templates keep using {{.Title}}, {{.URL}}, etc. while we shadow Parse
 // with a per-request value (avoids racing on Article.Parse across goroutines).
 //
+// CreateTime shadows the embedded string so themes that call
+// `{{.CreateTime.Format "2006-01-02"}}` (letter / press / tufte) work; the
+// underlying tmplTime still renders as the raw string for themes that just
+// do `{{.CreateTime}}` (minimal / ocean / sepia / simple).
+//
 // .Site holds the site-wide bundle so post.html can build the same header /
 // footer as index.html without re-fetching globals.
 type articleView struct {
@@ -436,6 +472,7 @@ type articleView struct {
 	Canonical   string
 	SiteTitle   string
 	Description string
+	CreateTime  tmplTime
 	Pinned      bool
 	Private     bool
 	AI          bool
@@ -461,6 +498,7 @@ func newArticleView(a *articlepkg.Article, parse, domain string) articleView {
 		Canonical:   domain + a.URL,
 		SiteTitle:   a.Title,
 		Description: desc,
+		CreateTime:  tmplTime(a.CreateTime),
 		Pinned:      a.IsPinned(),
 		Private:     a.IsPrivate(),
 		AI:          a.IsAI(),
