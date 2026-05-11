@@ -20,7 +20,7 @@ redirect_tls=false
 
 [blog]
 domain="https://sbrave.cn"
-title="sbraveyoung 的代码笔记"
+title="字里行间"
 subtitle="阅读 · 实践 · 思考"
 description="一个程序员的笔记本：技术拆解、踩坑总结、生活随笔。"
 author="sbraveyoung"

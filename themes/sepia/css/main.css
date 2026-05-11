@@ -272,9 +272,27 @@ html[lang^="en"] .lang-toggle .lang-en { display: inline; }
 
 /* ---- post body ---- */
 
-.page-post .post {
-  max-width: var(--content-w);
+/* Wrap holds the article + the TOC sidebar. Single column by default;
+ * upgrades to a 2-column grid (content + TOC) on wide viewports. Below
+ * the breakpoint the TOC is hidden entirely — see `.post-toc` rule below.
+ * This avoids the "sticky TOC overlays the body on scroll-up" problem
+ * we had with the old in-flow TOC. */
+.page-post .post-wrap {
+  max-width: 1100px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 40px;
+}
+@media (min-width: 1100px) {
+  .page-post .post-wrap {
+    grid-template-columns: minmax(0, 1fr) 220px;
+  }
+  .page-post .post { grid-column: 1; max-width: var(--content-w); margin: 0; }
+  .page-post .post-toc { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 1099px) {
+  .page-post .post { max-width: var(--content-w); margin: 0 auto; }
 }
 .post-cover { display: block; width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); margin-bottom: 22px; }
 .post-head { padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
@@ -323,23 +341,37 @@ html[lang^="en"] .lang-toggle .lang-en { display: inline; }
 .post-body img { display: block; margin: 1em auto; border-radius: var(--radius); }
 .post-body hr { margin: 2em auto; max-width: 80px; border-top: 2px solid var(--fg-faint); }
 
+/* TOC sidebar — desktop only. On narrow viewports `display: none` wins
+ * over `hidden` so it never appears (even if JS un-hides it for an
+ * article with 3+ headings). */
 .post-toc {
   position: sticky;
-  top: calc(var(--header-h) + 16px);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 22px;
+  top: calc(var(--header-h) + 18px);
+  align-self: start;
   font-size: 13px;
   font-family: var(--font-sans);
+  color: var(--fg-soft);
+  max-height: calc(100vh - var(--header-h) - 36px);
+  overflow-y: auto;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
 }
-.post-toc h2 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-faint); }
+.post-toc h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--fg-faint);
+  font-weight: 600;
+}
 .post-toc ol { list-style: none; padding: 0; margin: 0; }
-.post-toc li { padding: 2px 0; }
-.post-toc li.toc-h3 { padding-left: 14px; }
-.post-toc a { color: var(--fg-soft); }
+.post-toc li { padding: 2px 0; line-height: 1.4; }
+.post-toc li.toc-h3 { padding-left: 14px; font-size: 12px; }
+.post-toc a { color: var(--fg-soft); text-decoration: none; }
 .post-toc a:hover { color: var(--accent); }
+@media (max-width: 1099px) {
+  .post-toc { display: none !important; }
+}
 
 .post-foot { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--border); }
 .back-home { color: var(--fg-soft); font-size: 14px; }

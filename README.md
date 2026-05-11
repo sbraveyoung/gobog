@@ -77,17 +77,20 @@ so the rest of your notes stay private.
 
 ```
 <source>/
-├── Hello.md                        → /post/hello
-├── Tech/
-│   └── HTTP.md                     → /post/tech/http
-│   └── Networking/
-│       └── TLS.md                  → /post/tech/networking/tls
-├── about/
-│   └── me.md                       → /about     (first .md inside about/)
-├── attachments/
-│   └── diagram.png                 → /image/diagram.png  (resolved by basename)
+├── post/                           articles live here
+│   ├── Hello.md                    → /post/hello
+│   ├── Tech/HTTP.md                → /post/tech/http
+│   └── Tech/Networking/TLS.md      → /post/tech/networking/tls
+├── pages/                          top-level pages
+│   ├── about.md                    → /about
+│   └── contact.md                  → /contact
+├── resource/image/                 attachments
+│   └── diagram.png                 → /image/diagram.png
 └── .obsidian/                      ignored (any dotfile / dotdir is skipped)
 ```
+
+Legacy `<source>/image/` is still resolved as a fallback. Empty folders
+under `post/` are dropped from listings automatically.
 
 The URL path is derived from the relative file path, slugified per segment
 (lowercase + ASCII; CJK-only segments fall back to a stable CRC32 hex so URLs
@@ -101,6 +104,25 @@ encounters a note that's missing `id` / `url` / `title` / `create_time`,
 it fills them in deterministically and **persists them back to the `.md`
 file** so URLs stay stable across renames and moves. This is original
 gobog product design, retained.
+
+## Themes
+
+Three themes ship in-tree. Pick one with `[blog].theme = "themes/<name>"`.
+
+| Theme              | Vibe                            |
+| ------------------ | ------------------------------- |
+| `themes/minimal`   | Default. Black-ink, neutral.    |
+| `themes/sepia`     | Warm, paper-feel reading.       |
+| `themes/ocean`     | Cool blue, calm.                |
+
+All three share the same templates (`index.html`, `group.html`, `post.html`)
+and JavaScript — only the CSS color tokens differ. Each supports:
+
+- system dark/light auto-follow + manual toggle (persists in `localStorage`)
+- 中文 / English nav toggle (also persisted)
+- mobile-friendly header, reading-progress bar, code-copy button
+- a TOC sidebar on viewports ≥ 1100px; hidden on narrower screens so it
+  never overlays the article body when scrolling
 
 ## Front-matter
 
@@ -121,7 +143,7 @@ draft: true                            # excluded from listings unless include_d
 hidden: true                           # like draft, semantically "temporarily off"
 private: true                          # listed but body needs HTTP Basic auth
 pin: true                              # sticks to the top of its containing listing
-ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI"
+ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI powered"
 ---
 
 Body markdown here. **Bold**, *italics*, [links](https://example.com),
@@ -143,8 +165,8 @@ Unresolved [[...]] degrades to plain text — never broken anchors.
 | --- | --- |
 | `/` | Homepage; lists top-level posts + groups with summary, date, reading time, tags. |
 | `/post/<slug>` | Leaf post (rendered with `post.html`). |
-| `/post/<group>` | Group landing (rendered with `index.html`, lists sub-posts recursively). |
-| `/about` | First `.md` under `<source>/about/`. |
+| `/post/<group>` | Group landing (rendered with `group.html`, falls back to `index.html`). |
+| `/<page>` | Top-level page (`pages/<page>.md`). Rendered with `post.html`. |
 | `/tag/` | List of all tags. |
 | `/tag/<name>` | Posts tagged `<name>`. |
 | `/search?query=<q>` | In-memory search (title 10 / tag 5 / body 1 weights). |
@@ -163,7 +185,7 @@ Unresolved [[...]] degrades to plain text — never broken anchors.
 [blog]
 domain          = "https://example.com"  # used for canonical / atom / sitemap
 title, subtitle, description, author     # site metadata
-theme           = "themes/simple"
+theme           = "themes/minimal"       # or themes/sepia | themes/ocean
 source          = "/path/to/your/Vault/Blog"
 layout          = "vault"                # vault (default) | legacy — URL strategy only; scan is always recursive
 exclude_dirs    = []                     # vault top-level dirs to skip

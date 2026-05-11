@@ -51,28 +51,37 @@
 </header>
 
 <main class="page page-post">
-  <article class="post">
-    {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
-    <header class="post-head">
-      <div class="post-meta">
-        {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
-        {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
-        {{ if .AI }}<span class="badge badge-ai" title="AI">🤖 {{ .AILabel }}</span>{{ end }}
-        {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
-        {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
-        {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
-        {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
-      </div>
-    </header>
+  <div class="post-wrap">
+    <article class="post">
+      {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
+      <header class="post-head">
+        <div class="post-meta">
+          {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
+          {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
+          {{ if .AI }}<span class="badge badge-ai" title="AI">🤖 {{ .AILabel }}</span>{{ end }}
+          {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
+          {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
+          {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
+          {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
+        </div>
+      </header>
 
-    <aside class="post-toc" hidden><h2>Contents</h2><ol></ol></aside>
+      <div class="post-body">{{ .Parse }}</div>
 
-    <div class="post-body">{{ .Parse }}</div>
+      <footer class="post-foot">
+        <a class="back-home" href="/">← back</a>
+      </footer>
+    </article>
 
-    <footer class="post-foot">
-      <a class="back-home" href="/">← back</a>
-    </footer>
-  </article>
+    <!-- TOC lives in a right sidebar on desktop (≥1100px). On narrower
+         viewports it's hidden entirely so it never overlays the body
+         when scrolling — `position: sticky` at the top of an article
+         flow is uncomfortable on mobile. -->
+    <aside class="post-toc" hidden>
+      <h2>Contents</h2>
+      <ol></ol>
+    </aside>
+  </div>
 </main>
 
 <footer class="site-footer">
