@@ -1,6 +1,6 @@
 # FROM centos:8
 FROM golang:latest
-LABEL maintainer="sbraveyoung <SmartBraveCoder@gmail.com>"
+LABEL maintainer="sbraveyoung <sbraveyoung@gmail.com>"
 
 #build command: docker build -t gobog
 #run command: docker run -v $(pwd)/../blog:/go/src/github.com/sbraveyoung/blog gobog

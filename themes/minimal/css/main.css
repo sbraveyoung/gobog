@@ -280,27 +280,9 @@ html[lang^="en"] .lang-toggle .lang-en { display: inline; }
 
 /* ---- post body ---- */
 
-/* Wrap holds the article + the TOC sidebar. Single column by default;
- * upgrades to a 2-column grid (content + TOC) on wide viewports. Below
- * the breakpoint the TOC is hidden entirely — see `.post-toc` rule below.
- * This avoids the "sticky TOC overlays the body on scroll-up" problem
- * we had with the old in-flow TOC. */
-.page-post .post-wrap {
-  max-width: 1100px;
+.page-post .post {
+  max-width: var(--content-w);
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 40px;
-}
-@media (min-width: 1100px) {
-  .page-post .post-wrap {
-    grid-template-columns: minmax(0, 1fr) 220px;
-  }
-  .page-post .post { grid-column: 1; max-width: var(--content-w); margin: 0; }
-  .page-post .post-toc { grid-column: 2; grid-row: 1; }
-}
-@media (max-width: 1099px) {
-  .page-post .post { max-width: var(--content-w); margin: 0 auto; }
 }
 .post-cover { display: block; width: 100%; max-height: 320px; object-fit: cover; border-radius: var(--radius); margin-bottom: 22px; }
 .post-head { padding-bottom: 14px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
@@ -349,36 +331,124 @@ html[lang^="en"] .lang-toggle .lang-en { display: inline; }
 .post-body img { display: block; margin: 1em auto; border-radius: var(--radius); }
 .post-body hr { margin: 2em auto; max-width: 80px; border-top: 2px solid var(--fg-faint); }
 
-/* TOC sidebar — desktop only. On narrow viewports `display: none` wins
- * over `hidden` so it never appears (even if JS un-hides it for an
- * article with 3+ headings). */
+/* ---- floating TOC ----
+ * Button is fixed at bottom-right. Drawer slides in from the right and
+ * sits ABOVE the article (z-index > header). Backdrop dims the page and
+ * dismisses on click. This layout works the same on every viewport size
+ * — no media-query branching, no sticky overlay issues. JS un-hides the
+ * button only when the article has ≥ 3 headings.
+ */
+.toc-toggle {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  z-index: 1200;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.toc-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  color: var(--accent);
+}
+.toc-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .post-toc {
-  position: sticky;
-  top: calc(var(--header-h) + 18px);
-  align-self: start;
-  font-size: 13px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(320px, 86vw);
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: -2px 0 24px rgba(0, 0, 0, 0.12);
+  padding: 18px 20px 24px;
+  overflow-y: auto;
+  z-index: 1300;
+  transform: translateX(100%);
+  transition: transform .22s ease;
   font-family: var(--font-sans);
   color: var(--fg-soft);
-  max-height: calc(100vh - var(--header-h) - 36px);
-  overflow-y: auto;
-  padding-left: 16px;
-  border-left: 1px solid var(--border);
 }
-.post-toc h2 {
-  margin: 0 0 8px;
-  font-size: 11px;
+.post-toc.is-open { transform: translateX(0); }
+.post-toc[hidden] { display: block; } /* override [hidden] once JS un-hides it */
+
+.post-toc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.post-toc-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .08em;
   color: var(--fg-faint);
-  font-weight: 600;
 }
-.post-toc ol { list-style: none; padding: 0; margin: 0; }
-.post-toc li { padding: 2px 0; line-height: 1.4; }
-.post-toc li.toc-h3 { padding-left: 14px; font-size: 12px; }
-.post-toc a { color: var(--fg-soft); text-decoration: none; }
-.post-toc a:hover { color: var(--accent); }
-@media (max-width: 1099px) {
-  .post-toc { display: none !important; }
+.toc-close {
+  background: transparent;
+  border: 0;
+  color: var(--fg-faint);
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.toc-close:hover { color: var(--fg); background: var(--code-bg); }
+
+.post-toc-list { list-style: none; padding: 0; margin: 0; font-size: 14px; line-height: 1.55; }
+.post-toc-list li { padding: 3px 0; }
+.post-toc-list li.toc-h3 { padding-left: 14px; font-size: 13px; }
+.post-toc-list a { color: var(--fg-soft); text-decoration: none; display: block; padding: 2px 0; }
+.post-toc-list a:hover { color: var(--accent); }
+.post-toc-list a.is-current { color: var(--accent); font-weight: 600; }
+
+.toc-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  z-index: 1250;
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none;
+}
+.toc-backdrop.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.toc-backdrop[hidden] { display: block; } /* same trick: JS-toggled, CSS-driven */
+
+/* ---- comments ---- */
+
+.post-comments {
+  max-width: var(--content-w);
+  margin: 36px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.post-comments-title {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  margin: 0 0 14px;
+  color: var(--fg-soft);
 }
 
 .post-foot { margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--border); }

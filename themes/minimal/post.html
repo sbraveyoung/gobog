@@ -51,38 +51,64 @@
 </header>
 
 <main class="page page-post">
-  <div class="post-wrap">
-    <article class="post">
-      {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
-      <header class="post-head">
-        <div class="post-meta">
-          {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
-          {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
-          {{ if .AI }}<span class="badge badge-ai" title="AI">🤖 {{ .AILabel }}</span>{{ end }}
-          {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
-          {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
-          {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
-          {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
-        </div>
-      </header>
+  <article class="post">
+    {{ if .CoverURL }}<img class="post-cover" src="{{ .CoverURL }}" alt="" loading="lazy">{{ end }}
+    <header class="post-head">
+      <div class="post-meta">
+        {{ if .Pinned }}<span class="badge badge-pin" title="pinned">★ pinned</span>{{ end }}
+        {{ if .Private }}<span class="badge badge-priv" title="private">● private</span>{{ end }}
+        {{ if .AI }}<span class="badge badge-ai" title="AI 协作">🤖 {{ .AILabel }}</span>{{ end }}
+        {{ if .CreateTime }}<span>{{ .CreateTime }}</span>{{ end }}
+        {{ if .WordCount }}<span>· {{ .WordCount }} 字</span>{{ end }}
+        {{ if .ReadingTimeMin }}<span>· {{ .ReadingTimeMin }} min</span>{{ end }}
+        {{ range .Tags }}<a class="tag" href="/tag/{{ . }}">#{{ . }}</a>{{ end }}
+      </div>
+    </header>
 
-      <div class="post-body">{{ .Parse }}</div>
+    <div class="post-body">{{ .Parse }}</div>
 
-      <footer class="post-foot">
-        <a class="back-home" href="/">← back</a>
-      </footer>
-    </article>
-
-    <!-- TOC lives in a right sidebar on desktop (≥1100px). On narrower
-         viewports it's hidden entirely so it never overlays the body
-         when scrolling — `position: sticky` at the top of an article
-         flow is uncomfortable on mobile. -->
-    <aside class="post-toc" hidden>
-      <h2>Contents</h2>
-      <ol></ol>
-    </aside>
-  </div>
+    <footer class="post-foot">
+      <a class="back-home" href="/">← back</a>
+    </footer>
+  </article>
 </main>
+
+<!-- Floating TOC: button bottom-right, drawer slides in from the right.
+     Works identically across viewports. JS hides the button entirely when
+     the article has fewer than 3 headings (no point of navigation). -->
+<button class="toc-toggle" type="button" aria-controls="post-toc" aria-expanded="false" aria-label="Open table of contents" hidden>
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <path d="M4 6h16M4 12h16M4 18h10"/>
+  </svg>
+</button>
+<aside class="post-toc" id="post-toc" hidden aria-label="Table of contents">
+  <header class="post-toc-head">
+    <h2>目录 · Contents</h2>
+    <button class="toc-close" type="button" aria-label="Close">✕</button>
+  </header>
+  <ol class="post-toc-list"></ol>
+</aside>
+<div class="toc-backdrop" hidden></div>
+
+{{ if .Site.Comments.Enabled }}
+<section class="post-comments">
+  <h2 class="post-comments-title">评论 · Comments</h2>
+  <script src="https://giscus.app/client.js"
+    data-repo="{{ .Site.Comments.Repo }}"
+    data-repo-id="{{ .Site.Comments.RepoID }}"
+    data-category="{{ .Site.Comments.Category }}"
+    data-category-id="{{ .Site.Comments.CategoryID }}"
+    data-mapping="{{ .Site.Comments.Mapping }}"
+    data-strict="0"
+    data-reactions-enabled="{{ .Site.Comments.ReactionsEnabled }}"
+    data-emit-metadata="0"
+    data-input-position="{{ .Site.Comments.InputPosition }}"
+    data-theme="preferred_color_scheme"
+    data-lang="zh-CN"
+    crossorigin="anonymous"
+    async></script>
+</section>
+{{ end }}
 
 <footer class="site-footer">
   <div class="row">

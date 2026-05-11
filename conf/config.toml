@@ -20,7 +20,7 @@ redirect_tls=false
 
 [blog]
 domain="https://sbrave.cn"
-title="字里行间"
+title="sbraveyoung · 字里行间"
 subtitle="阅读 · 实践 · 思考"
 description="一个程序员的笔记本：技术拆解、踩坑总结、生活随笔。"
 author="sbraveyoung"
@@ -75,3 +75,18 @@ enabled=false
 interval="1h"
 dir=""
 keep=7
+
+# Comments are off by default. To enable: set enabled=true, fill the four
+# giscus IDs from https://giscus.app (point it at a public repo that has
+# Discussions turned on), and commit. Comments only render on post pages,
+# never on listings.
+[comments]
+enabled=false
+provider="giscus"
+repo=""                 # e.g. "sbraveyoung/blog-comments"
+repo_id=""              # R_kgDO... shown by giscus.app
+category="General"
+category_id=""          # DIC_kw... shown by giscus.app
+mapping="pathname"      # pathname | url | title | og:title | specific | number
+reactions_enabled="1"
+input_position="bottom" # top | bottom

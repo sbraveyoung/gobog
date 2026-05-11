@@ -143,7 +143,7 @@ draft: true                            # excluded from listings unless include_d
 hidden: true                           # like draft, semantically "temporarily off"
 private: true                          # listed but body needs HTTP Basic auth
 pin: true                              # sticks to the top of its containing listing
-ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI powered"
+ai: claude                             # 🤖 badge with the model name; `ai: true` → "🤖 AI 协作"
 ---
 
 Body markdown here. **Bold**, *italics*, [links](https://example.com),

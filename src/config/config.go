@@ -102,14 +102,35 @@ type BackupConfig struct {
 	Keep     int    `toml:"keep"`     // rotation: keep newest N archives. Default 7.
 }
 
+// CommentsConfig wires a third-party comment widget into post pages.
+// Currently only giscus (GitHub Discussions) is supported — it's
+// lightweight, needs no server of its own, and gates writes behind
+// GitHub auth, which fits a personal blog. Other providers can be
+// plugged later by switching on Provider in the template.
+//
+// To find the four GitHub-side IDs, run the configurator at
+// https://giscus.app and copy the values it shows.
+type CommentsConfig struct {
+	Enabled          bool   `toml:"enabled"`
+	Provider         string `toml:"provider"`          // only "giscus" recognised today
+	Repo             string `toml:"repo"`              // "user/repo"
+	RepoID           string `toml:"repo_id"`           // R_kgDO… from giscus.app
+	Category         string `toml:"category"`          // discussion category name
+	CategoryID       string `toml:"category_id"`       // DIC_kw… from giscus.app
+	Mapping          string `toml:"mapping"`           // pathname|url|title|… giscus mapping
+	ReactionsEnabled string `toml:"reactions_enabled"` // "1" / "0"
+	InputPosition    string `toml:"input_position"`    // top | bottom
+}
+
 type Config struct {
-	Blog   BlogConfig
-	Http   HttpConfig
-	Log    LogConfig
-	Auth   AuthConfig
-	Data   DataConfig
-	Image  ImageConfig
-	Backup BackupConfig
+	Blog     BlogConfig
+	Http     HttpConfig
+	Log      LogConfig
+	Auth     AuthConfig
+	Data     DataConfig
+	Image    ImageConfig
+	Backup   BackupConfig
+	Comments CommentsConfig
 }
 
 func init() {

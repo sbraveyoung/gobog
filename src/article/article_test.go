@@ -274,11 +274,11 @@ func TestAIBadgeSemantics(t *testing.T) {
 		wantLabel string
 	}{
 		{"", false, ""},
-		{"true", true, "AI powered"},
-		{"True", true, "AI powered"},
-		{"1", true, "AI powered"},
-		{"yes", true, "AI powered"},
-		{"on", true, "AI powered"},
+		{"true", true, "AI 协作"},
+		{"True", true, "AI 协作"},
+		{"1", true, "AI 协作"},
+		{"yes", true, "AI 协作"},
+		{"on", true, "AI 协作"},
 		{"false", false, ""},   // explicit false isn't an AI badge
 		{"claude", true, "claude"},
 		{"GPT-4o", true, "GPT-4o"},
