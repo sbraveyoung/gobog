@@ -462,6 +462,11 @@ func newGroupView(group *articlepkg.Article, list articlepkg.Articles) groupView
 // underlying tmplTime still renders as the raw string for themes that just
 // do `{{.CreateTime}}` (minimal / ocean / sepia / simple).
 //
+// ViewCount stays at 0 — the view-count subsystem was retired but
+// letter / press / tufte post.html templates still reference
+// `{{ if .ViewCount }}`, and a missing field would crash the renderer
+// instead of just being falsy.
+//
 // .Site holds the site-wide bundle so post.html can build the same header /
 // footer as index.html without re-fetching globals.
 type articleView struct {
@@ -478,6 +483,7 @@ type articleView struct {
 	AI          bool
 	AILabel     string
 	CoverURL    string
+	ViewCount   int
 	Year        int
 }
 
