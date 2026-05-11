@@ -298,14 +298,50 @@ func loadGroupDir(dirPath, walkRoot, urlPrefix string) (*articlepkg.Article, err
 		return nil, nil
 	}
 
+	// Pick the group's CreateTime BEFORE we potentially reorder. The
+	// default loadDir sort is date-desc, so subs[0] holds the newest
+	// item's date — that's what we want to surface in the home listing
+	// so series with a fresh chapter float back up.
+	groupDate := subs[0].CreateTime
+
+	// Series detection: if every leaf has a numeric order signal
+	// (front-matter `order:` or digit-prefix filename), re-sort the
+	// sub-list ascending so chapter 1 reads before chapter 2.
+	if isSequentialSeries(subs) {
+		sort.SliceStable(subs, func(i, j int) bool {
+			return subs[i].SeriesOrderKey() < subs[j].SeriesOrderKey()
+		})
+	}
+
 	g := &articlepkg.Article{}
 	g.Source = dirPath
 	g.Title = filepath.Base(dirPath)
 	g.Id = articlepkg.SlugOrHash(g.Title)
 	g.URL = groupURL
-	g.CreateTime = subs[0].CreateTime // newest sub becomes the group's date
+	g.CreateTime = groupDate
 	g.SubArticle = subs
 	return g, nil
+}
+
+// isSequentialSeries returns true when every leaf in `subs` carries a
+// SeriesOrderKey ≥ 0. Empty groups, or groups whose direct children are
+// themselves groups, fall through to false — sub-groups participate in
+// the parent's date sort. Mixed groups (some leaves with order, some
+// without) also fall back to date order so a single mis-named file
+// doesn't silently scramble the rest of the listing.
+func isSequentialSeries(subs articlepkg.Articles) bool {
+	leaves := 0
+	withOrder := 0
+	for _, a := range subs {
+		if len(a.SubArticle) > 0 {
+			continue
+		}
+		leaves++
+		if a.SeriesOrderKey() >= 0 {
+			withOrder++
+		}
+	}
+	return leaves >= 2 && withOrder == leaves
 }
 
 // buildArticle parses the .md at path and fills in any missing meta

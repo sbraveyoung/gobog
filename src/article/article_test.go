@@ -136,22 +136,32 @@ func TestCountWordsMixedCJKAndAscii(t *testing.T) {
 	}
 }
 
-func TestArticlesSortingGroupsFirstThenDateDesc(t *testing.T) {
-	leafA := &Article{}
-	leafA.CreateTime = "2026-04-25 10:00:00"
-	leafB := &Article{}
-	leafB.CreateTime = "2026-04-24 10:00:00"
-	group := &Article{SubArticle: Articles{leafA}}
-	group.CreateTime = "2026-04-23 10:00:00"
+// TestArticlesSortingMixedByDate confirms groups and leaves share a single
+// chronological ranking — a fresh leaf can outrank an older series in the
+// home listing. The older "groups always first" rule buried new posts
+// below every series and was removed.
+func TestArticlesSortingMixedByDate(t *testing.T) {
+	leafNewer := &Article{}
+	leafNewer.Title = "leaf-newer"
+	leafNewer.CreateTime = "2026-04-25 10:00:00"
 
-	list := Articles{leafA, leafB, group}
+	leafOlder := &Article{}
+	leafOlder.Title = "leaf-older"
+	leafOlder.CreateTime = "2026-04-20 10:00:00"
+
+	groupMid := &Article{SubArticle: Articles{leafNewer}}
+	groupMid.Title = "group-mid"
+	groupMid.CreateTime = "2026-04-22 10:00:00"
+
+	list := Articles{leafOlder, groupMid, leafNewer}
 	sort.Sort(list)
 
-	if list[0] != group {
-		t.Errorf("groups should sort first; got order: %v", titles(list))
-	}
-	if list[1] != leafA || list[2] != leafB {
-		t.Errorf("leaves should sort by CreateTime desc; got order: %v", titles(list))
+	want := []*Article{leafNewer, groupMid, leafOlder}
+	for i, w := range want {
+		if list[i] != w {
+			t.Errorf("position %d: got %q, want %q (full order: %v)",
+				i, list[i].Title, w.Title, titles(list))
+		}
 	}
 }
 
@@ -422,4 +432,34 @@ func containsAny(s string, subs []string) bool {
 		}
 	}
 	return false
+}
+
+func TestSeriesOrderKey(t *testing.T) {
+	cases := []struct {
+		name   string
+		order  string
+		source string
+		want   int
+	}{
+		{"explicit order wins", "5", "anything.md", 5},
+		{"explicit order wins over digit prefix", "5", "00-导读.md", 5},
+		{"digit prefix fallback", "", "00-导读.md", 0},
+		{"three-digit prefix", "", "012-foo.md", 12},
+		{"order whitespace tolerated", "  7  ", "00.md", 7},
+		{"non-numeric order ignored", "abc", "03-bar.md", 3},
+		{"no signal", "", "regular-post.md", -1},
+		{"no signal, no source", "", "", -1},
+		{"path with directories", "", "post/AI/00-intro.md", 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := &Article{Source: c.source}
+			a.Order = c.order
+			got := a.SeriesOrderKey()
+			if got != c.want {
+				t.Errorf("SeriesOrderKey(order=%q, source=%q) = %d, want %d",
+					c.order, c.source, got, c.want)
+			}
+		})
+	}
 }

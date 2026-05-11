@@ -234,3 +234,92 @@ func TestSlugifyPath(t *testing.T) {
 	// Force articlepkg to be used so go vet doesn't complain.
 	_ = articlepkg.TIME_LAYOUT
 }
+
+// TestSeriesGroupSortsAscending covers the per-group sequential
+// ordering: when every leaf in a directory carries an order signal
+// (front-matter `order:` or a digit-prefix filename), the group's
+// SubArticle list should run 1 → N instead of newest-first.
+//
+// Mirrors the AI-入门到精通系列 use case from the blog: files named
+// 00-, 01-, 02-, … must read in that order, not date-desc.
+func TestSeriesGroupSortsAscending(t *testing.T) {
+	root := t.TempDir()
+	// Intentionally create the files newest-first so the date-desc
+	// default would order them backwards (10, 02, 00) — series
+	// detection must override that.
+	writeNote(t, filepath.Join(root, "post", "AI系列", "10-finale.md"),
+		"---\ntitle: finale\ncreate_time: 2026-05-10 10:00:00\n---\nbody\n")
+	writeNote(t, filepath.Join(root, "post", "AI系列", "02-middle.md"),
+		"---\ntitle: middle\ncreate_time: 2026-05-08 10:00:00\n---\nbody\n")
+	writeNote(t, filepath.Join(root, "post", "AI系列", "00-intro.md"),
+		"---\ntitle: intro\ncreate_time: 2026-05-01 10:00:00\n---\nbody\n")
+
+	prev := config.C.Blog.Source
+	config.C.Blog.Source = root
+	t.Cleanup(func() { config.C.Blog.Source = prev })
+
+	if err := Blog.Reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	var group *articlepkg.Article
+	for _, g := range Blog.Groups() {
+		if g.Title == "AI系列" {
+			group = g
+			break
+		}
+	}
+	if group == nil {
+		t.Fatal("AI系列 group not found in Blog.Groups()")
+	}
+	titles := []string{}
+	for _, a := range group.SubArticle {
+		titles = append(titles, a.Title)
+	}
+	want := []string{"intro", "middle", "finale"}
+	for i, w := range want {
+		if titles[i] != w {
+			t.Errorf("series order: want %v, got %v", want, titles)
+			break
+		}
+	}
+
+	// Group's own CreateTime should still be the newest sub's date so
+	// the group floats in the home listing when a fresh chapter lands.
+	if group.CreateTime != "2026-05-10 10:00:00" {
+		t.Errorf("group CreateTime = %q, want 2026-05-10 (newest sub)", group.CreateTime)
+	}
+}
+
+// TestNonSeriesGroupKeepsDateOrder confirms the default ordering still
+// applies when leaves don't carry a series signal (most blog groups).
+func TestNonSeriesGroupKeepsDateOrder(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, filepath.Join(root, "post", "杂记", "alpha.md"),
+		"---\ntitle: alpha\ncreate_time: 2026-05-01 10:00:00\n---\nbody\n")
+	writeNote(t, filepath.Join(root, "post", "杂记", "beta.md"),
+		"---\ntitle: beta\ncreate_time: 2026-05-09 10:00:00\n---\nbody\n")
+
+	prev := config.C.Blog.Source
+	config.C.Blog.Source = root
+	t.Cleanup(func() { config.C.Blog.Source = prev })
+
+	if err := Blog.Reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	var group *articlepkg.Article
+	for _, g := range Blog.Groups() {
+		if g.Title == "杂记" {
+			group = g
+			break
+		}
+	}
+	if group == nil {
+		t.Fatal("杂记 group not found")
+	}
+	if group.SubArticle[0].Title != "beta" {
+		t.Errorf("non-series group should sort date-desc; got %s first",
+			group.SubArticle[0].Title)
+	}
+}
