@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	ttemplate "text/template"
 
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
 	"github.com/sbraveyoung/gobog/src/config"
@@ -142,7 +141,7 @@ func showSnippet(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	t, err := ttemplate.ParseFiles(themeFor(r) + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

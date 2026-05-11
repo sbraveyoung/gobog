@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html/template"
@@ -10,8 +11,8 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"regexp"
 	"strings"
-	ttemplate "text/template"
 
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
 	"github.com/sbraveyoung/gobog/src/blog"
@@ -70,13 +71,176 @@ func Export(outDir string) error {
 	if err := writeCNAME(outDir); err != nil {
 		return err
 	}
+	// Per-theme exports so the switcher button works on a static host.
+	// Each non-default theme lands at outDir/__themes/<name>/ with all
+	// internal absolute paths rewritten to live under that prefix.
+	if err := exportAllThemes(outDir); err != nil {
+		return err
+	}
 
 	logs.Info("export complete:", outDir)
 	return nil
 }
 
+// exportAllThemes renders the whole site once per available theme into
+// outDir/__themes/<name>/, then writes the manifest + theme-switcher script
+// at the root so the front-end button works offline. The default theme keeps
+// its position at outDir/ — no duplicate copy.
+func exportAllThemes(outDir string) error {
+	themes := availableThemes()
+	defaultName := filepath.Base(filepath.Clean(config.C.Blog.Theme))
+	parent := filepath.Dir(filepath.Clean(config.C.Blog.Theme))
+
+	// Root manifest + switcher script. Browsers fetch these from / no matter
+	// which theme directory the visitor is currently viewing.
+	if err := writeThemeManifest(filepath.Join(outDir, "__themes.json"), themes, defaultName, ""); err != nil {
+		return err
+	}
+	if err := writeFile(filepath.Join(outDir, "__theme-switcher.js"), []byte(themeSwitcherJS)); err != nil {
+		return err
+	}
+
+	// Only one theme available? Nothing more to do — the switcher itself
+	// already gates on `themes.length >= 2`.
+	if len(themes) < 2 {
+		return nil
+	}
+
+	saved := config.C.Blog.Theme
+	defer func() { config.C.Blog.Theme = saved }()
+
+	for _, name := range themes {
+		if name == defaultName {
+			continue
+		}
+		themeDir := filepath.Join(parent, name)
+		themeOut := filepath.Join(outDir, "__themes", name)
+		config.C.Blog.Theme = themeDir
+
+		if err := exportIndex(themeOut); err != nil {
+			return fmt.Errorf("export theme %q index: %w", name, err)
+		}
+		if err := exportPages(themeOut); err != nil {
+			return fmt.Errorf("export theme %q pages: %w", name, err)
+		}
+		if err := exportPosts(themeOut); err != nil {
+			return fmt.Errorf("export theme %q posts: %w", name, err)
+		}
+		if err := exportTags(themeOut); err != nil {
+			return fmt.Errorf("export theme %q tags: %w", name, err)
+		}
+		if err := exportNotFound(themeOut); err != nil {
+			return fmt.Errorf("export theme %q 404: %w", name, err)
+		}
+
+		// Copy this theme's own CSS/JS so the prefixed HTML can reach them.
+		for _, sub := range []string{"css", "js"} {
+			src := filepath.Join(themeDir, sub)
+			if fi, err := os.Stat(src); err == nil && fi.IsDir() {
+				if err := copyTree(src, filepath.Join(themeOut, sub)); err != nil {
+					return fmt.Errorf("copy theme %q %s: %w", name, sub, err)
+				}
+			}
+		}
+		// Images are theme-independent — copy from the already-exported root
+		// tree so the prefixed <img src="/__themes/<name>/image/..."> resolves.
+		rootImage := filepath.Join(outDir, "image")
+		if fi, err := os.Stat(rootImage); err == nil && fi.IsDir() {
+			if err := copyTree(rootImage, filepath.Join(themeOut, "image")); err != nil {
+				return fmt.Errorf("copy images for theme %q: %w", name, err)
+			}
+		}
+
+		// Each theme subdir advertises its own manifest so the switcher
+		// renders "active" correctly even when JS detection lags.
+		if err := writeThemeManifest(filepath.Join(themeOut, "__themes.json"), themes, defaultName, name); err != nil {
+			return err
+		}
+		if err := writeFile(filepath.Join(themeOut, "__theme-switcher.js"), []byte(themeSwitcherJS)); err != nil {
+			return err
+		}
+
+		if err := rewriteThemePaths(themeOut, "/__themes/"+name); err != nil {
+			return fmt.Errorf("rewrite theme %q paths: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func writeThemeManifest(path string, themes []string, defaultName, current string) error {
+	payload := map[string]interface{}{
+		"themes":  themes,
+		"default": defaultName,
+		"current": current,
+		"static":  true,
+	}
+	b, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFile(path, b)
+}
+
+// pathAttrRE matches href / src / action attributes pointing at root-anchored
+// paths. The capture is greedy on attribute value contents so query strings
+// and fragments come along for the rewrite.
+var pathAttrRE = regexp.MustCompile(`(href|src|action)="(/[^"]*)"`)
+
+// pathsThatStayAtRoot — internal endpoints the rewrite must NOT relocate so
+// the static switcher and its manifest always resolve from the document root
+// regardless of which theme subtree the visitor is in.
+var pathsThatStayAtRoot = []string{
+	"/__themes/",
+	"/__themes.json",
+	"/__theme-switcher.js",
+}
+
+func rewritePathsInHTML(content, prefix string) string {
+	if prefix == "" {
+		return content
+	}
+	return pathAttrRE.ReplaceAllStringFunc(content, func(m string) string {
+		eq := strings.Index(m, `="`)
+		if eq < 0 {
+			return m
+		}
+		attr := m[:eq]
+		url := m[eq+2 : len(m)-1]
+		if strings.HasPrefix(url, "//") {
+			return m
+		}
+		for _, keep := range pathsThatStayAtRoot {
+			if url == strings.TrimSuffix(keep, "/") || url == keep || strings.HasPrefix(url, keep) {
+				return m
+			}
+		}
+		return attr + `="` + prefix + url + `"`
+	})
+}
+
+func rewriteThemePaths(dir, prefix string) error {
+	return filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return err
+		}
+		ext := strings.ToLower(filepath.Ext(p))
+		if ext != ".html" && ext != ".xml" {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out := rewritePathsInHTML(string(b), prefix)
+		if out == string(b) {
+			return nil
+		}
+		return os.WriteFile(p, []byte(out), 0o644)
+	})
+}
+
 func exportIndex(outDir string) error {
-	t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	t, err := parseHTMLTemplate(config.C.Blog.Theme + "/index.html")
 	if err != nil {
 		return fmt.Errorf("parse index template: %w", err)
 	}
@@ -161,9 +325,9 @@ func exportPosts(outDir string) error {
 func loadGroupTemplate() (*template.Template, error) {
 	groupPath := config.C.Blog.Theme + "/group.html"
 	if _, err := os.Stat(groupPath); err == nil {
-		return template.ParseFiles(groupPath)
+		return parseHTMLTemplate(groupPath)
 	}
-	return template.ParseFiles(config.C.Blog.Theme + "/index.html")
+	return parseHTMLTemplate(config.C.Blog.Theme + "/index.html")
 }
 
 // withoutPrivate returns a shallow copy of list with private articles
@@ -267,7 +431,7 @@ func exportNotFound(outDir string) error {
 }
 
 func executePostTemplate(a *articlepkg.Article, html string) ([]byte, error) {
-	t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
+	t, err := parseTextTemplate(config.C.Blog.Theme + "/post.html")
 	if err != nil {
 		return nil, err
 	}

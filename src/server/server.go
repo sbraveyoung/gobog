@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	ttemplate "text/template"
 	"time"
 
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
@@ -132,7 +131,7 @@ func logMiddle(f func(w http.ResponseWriter, r *http.Request)) func(w http.Respo
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
-		t, err := template.ParseFiles(themeFor(r) + "/index.html")
+		t, err := parseHTMLTemplate(themeFor(r) + "/index.html")
 		if err != nil {
 			logs.Error("parse index template:", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -222,7 +221,7 @@ func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Arti
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	t, err := ttemplate.ParseFiles(themeFor(r) + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err != nil {
 		logs.Warn("parse post template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -245,7 +244,7 @@ func renderGroup(w http.ResponseWriter, r *http.Request, group *articlepkg.Artic
 	if _, err := os.Stat(tplPath); os.IsNotExist(err) {
 		tplPath = theme + "/index.html"
 	}
-	t, err := template.ParseFiles(tplPath)
+	t, err := parseHTMLTemplate(tplPath)
 	if err != nil {
 		logs.Warn("parse group template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -334,7 +333,7 @@ func searchPosts(query string) articlepkg.Articles {
 }
 
 func writeSyntheticPost(w http.ResponseWriter, r *http.Request, title, bodyHTML string) {
-	t, err := ttemplate.ParseFiles(themeFor(r) + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -348,7 +347,7 @@ func writeSyntheticPost(w http.ResponseWriter, r *http.Request, title, bodyHTML 
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	logs.Warn("404:", r.URL.Path)
-	t, err := ttemplate.ParseFiles(themeFor(r) + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err == nil {
 		w.WriteHeader(http.StatusNotFound)
 		a := &articlepkg.Article{}
