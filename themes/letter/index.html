@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{if .Tag}}#{{.Tag}} · {{end}}{{.Site.Title}}</title>
+<meta name="description" content="{{.Site.Description}}">
+<meta property="og:title" content="{{.Site.Title}}">
+<meta property="og:description" content="{{.Site.Description}}">
+<meta property="og:type" content="website">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <a href="/" class="brand-title">{{.Site.Title}}</a>
+    <div class="brand-sub">{{.Site.Subtitle}}{{if .Site.Author}} · by {{.Site.Author}}{{end}}</div>
+  </div>
+  <nav class="nav">
+    <a href="/" class="{{if not .Tag}}active{{end}}">写作</a>
+    <a href="/tag/">标签</a>
+    <a href="/about">关于</a>
+    <a href="/atom.xml">RSS</a>
+  </nav>
+</header>
+
+<main class="container">
+  {{if .Tag}}
+    <section class="page-intro">
+      <div class="kicker">tag</div>
+      <h1 class="page-title">#{{.Tag}}</h1>
+      <p class="page-lede">共 {{len .Articles}} 篇文章使用了这个标签。</p>
+    </section>
+  {{else if .Group}}
+    <section class="page-intro">
+      <div class="kicker">group</div>
+      <h1 class="page-title">{{.Group}}</h1>
+    </section>
+  {{else}}
+    <section class="intro">
+      <p class="pull-quote">“All that is gold does not glitter, not all those who wander are lost.”</p>
+      <p class="intro-meta">{{.Site.Description}}</p>
+    </section>
+  {{end}}
+
+  {{/* Pinned posts */}}
+  {{range .Articles}}{{if .Pinned}}
+  <article class="post pinned">
+    <div class="kicker accent">✦ Pinned · 置顶</div>
+    <h2 class="post-title"><a href="{{.URL}}">{{.Title}}</a></h2>
+    {{if .Summary}}<p class="post-summary">{{.Summary}}</p>{{end}}
+    <div class="post-meta">
+      <span>{{.CreateTime.Format "2006-01-02"}}</span>
+      <span>· {{.ReadingTimeMin}} min read</span>
+      {{if .ViewCount}}<span>· {{.ViewCount}} views</span>{{end}}
+      {{range .Tags}}<a href="/tag/{{.}}" class="tag">#{{.}}</a>{{end}}
+    </div>
+  </article>
+  {{end}}{{end}}
+
+  <div class="rule"></div>
+
+  {{/* Regular list */}}
+  {{range .Articles}}{{if not .Pinned}}
+  <article class="post-row">
+    <div class="post-date">
+      <div class="d-md">{{.CreateTime.Format "01-02"}}</div>
+      <div class="d-y">{{.CreateTime.Format "2006"}}</div>
+      <div class="d-len">{{.ReadingTimeMin}} min</div>
+    </div>
+    <div class="post-body">
+      <h3 class="post-title-sm">
+        <a href="{{.URL}}">{{.Title}}</a>
+        {{if .AI}}<span class="ai-badge">🤖 {{.AILabel}}</span>{{end}}
+      </h3>
+      {{if .Summary}}<p class="post-summary-sm">{{.Summary}}</p>{{end}}
+      <div class="post-tags">
+        {{range .Tags}}<a href="/tag/{{.}}" class="tag-sm">#{{.}}</a>{{end}}
+      </div>
+    </div>
+  </article>
+  {{end}}{{end}}
+</main>
+
+<footer class="footer">
+  <span>© {{.Year}} {{.Site.Author}}. Built with <a href="https://github.com/sbraveyoung/gobog">gobog</a>.</span>
+  <span>markdown · obsidian · go</span>
+</footer>
+</body>
+</html>
