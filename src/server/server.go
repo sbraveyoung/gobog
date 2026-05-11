@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	ttemplate "text/template"
 	"time"
 
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
@@ -118,6 +117,8 @@ func (s *Server) newHandler() http.Handler {
 	mux.HandleFunc("/bing_img", logMiddle(bingImgHandler))
 	mux.HandleFunc("/snippet", logMiddle(snippetHandler))
 	mux.HandleFunc("/snippet/", logMiddle(snippetHandler))
+	mux.HandleFunc("/__themes.json", logMiddle(themesJSONHandler))
+	mux.HandleFunc("/__theme-switcher.js", themeSwitcherJSHandler)
 	return mux
 }
 
@@ -130,7 +131,7 @@ func logMiddle(f func(w http.ResponseWriter, r *http.Request)) func(w http.Respo
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
-		t, err := template.ParseFiles(config.C.Blog.Theme + "/index.html")
+		t, err := parseHTMLTemplate(themeFor(r) + "/index.html")
 		if err != nil {
 			logs.Error("parse index template:", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -168,7 +169,7 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	if len(matched.SubArticle) == 0 {
 		renderPost(w, r, matched)
 	} else {
-		renderGroup(w, matched, matched.SubArticle)
+		renderGroup(w, r, matched, matched.SubArticle)
 	}
 }
 
@@ -220,7 +221,7 @@ func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Arti
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err != nil {
 		logs.Warn("parse post template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -237,12 +238,13 @@ func renderPost(w http.ResponseWriter, r *http.Request, article *articlepkg.Arti
 // layout) keep working. Group pages get a richer view: title (group name),
 // breadcrumb, sub-articles list — index.html only ever sees the top-level
 // groups, so reusing it for a sub-group landing was always a half-fit.
-func renderGroup(w http.ResponseWriter, group *articlepkg.Article, list articlepkg.Articles) {
-	tplPath := config.C.Blog.Theme + "/group.html"
+func renderGroup(w http.ResponseWriter, r *http.Request, group *articlepkg.Article, list articlepkg.Articles) {
+	theme := themeFor(r)
+	tplPath := theme + "/group.html"
 	if _, err := os.Stat(tplPath); os.IsNotExist(err) {
-		tplPath = config.C.Blog.Theme + "/index.html"
+		tplPath = theme + "/index.html"
 	}
-	t, err := template.ParseFiles(tplPath)
+	t, err := parseHTMLTemplate(tplPath)
 	if err != nil {
 		logs.Warn("parse group template:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -266,7 +268,7 @@ func tagHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(&sb, "<li><a href=\"/tag/%s\">%s</a></li>", t, t)
 		}
 		sb.WriteString("</ul>")
-		writeSyntheticPost(w, "Tags", sb.String())
+		writeSyntheticPost(w, r, "Tags", sb.String())
 		return
 	}
 	posts := blog.Blog.PostsByTag(tag)
@@ -277,24 +279,24 @@ func tagHandler(w http.ResponseWriter, r *http.Request) {
 	synthetic := &articlepkg.Article{}
 	synthetic.Title = "#" + tag
 	synthetic.URL = "/tag/" + tag
-	renderGroup(w, synthetic, posts)
+	renderGroup(w, r, synthetic, posts)
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("query"))
 	if q == "" {
-		writeSyntheticPost(w, "Search", `<form method="get" action="/search"><input name="query" placeholder="search" autofocus/><button>Go</button></form>`)
+		writeSyntheticPost(w, r, "Search", `<form method="get" action="/search"><input name="query" placeholder="search" autofocus/><button>Go</button></form>`)
 		return
 	}
 	results := searchPosts(q)
 	if len(results) == 0 {
-		writeSyntheticPost(w, "Search: "+q, "<p>No matching posts.</p>")
+		writeSyntheticPost(w, r, "Search: "+q, "<p>No matching posts.</p>")
 		return
 	}
 	synthetic := &articlepkg.Article{}
 	synthetic.Title = "Search: " + q
 	synthetic.URL = "/search?query=" + q
-	renderGroup(w, synthetic, results)
+	renderGroup(w, r, synthetic, results)
 }
 
 func searchPosts(query string) articlepkg.Articles {
@@ -330,8 +332,8 @@ func searchPosts(query string) articlepkg.Articles {
 	return out
 }
 
-func writeSyntheticPost(w http.ResponseWriter, title, bodyHTML string) {
-	t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
+func writeSyntheticPost(w http.ResponseWriter, r *http.Request, title, bodyHTML string) {
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -345,7 +347,7 @@ func writeSyntheticPost(w http.ResponseWriter, title, bodyHTML string) {
 
 func notFound(w http.ResponseWriter, r *http.Request) {
 	logs.Warn("404:", r.URL.Path)
-	t, err := ttemplate.ParseFiles(config.C.Blog.Theme + "/post.html")
+	t, err := parseTextTemplate(themeFor(r) + "/post.html")
 	if err == nil {
 		w.WriteHeader(http.StatusNotFound)
 		a := &articlepkg.Article{}
@@ -444,11 +446,11 @@ func imageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func cssHandler(w http.ResponseWriter, r *http.Request) {
-	safeServeFile(w, r, config.C.Blog.Theme, "/css/")
+	safeServeFile(w, r, themeFor(r), "/css/")
 }
 
 func jsHandler(w http.ResponseWriter, r *http.Request) {
-	safeServeFile(w, r, config.C.Blog.Theme, "/js/")
+	safeServeFile(w, r, themeFor(r), "/js/")
 }
 
 func bingImgHandler(w http.ResponseWriter, r *http.Request) {
@@ -501,4 +503,3 @@ func bingImgHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = io.Copy(w, imgResp.Body)
 }
-
