@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · {{.Site.Title}}</title>
+<meta name="description" content="{{.Summary}}">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Summary}}">
+<meta property="og:type" content="article">
+{{if .CoverURL}}<meta property="og:image" content="{{.CoverURL}}">{{end}}
+<link rel="canonical" href="{{.Canonical}}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body class="post-page">
+
+<div class="reading-progress"><div class="reading-progress-bar"></div></div>
+
+<header class="masthead">
+  <div class="brand">
+    <a href="/" class="brand-title">{{.Site.Title}}</a>
+    <div class="brand-sub">{{.Site.Subtitle}}</div>
+  </div>
+  <nav class="nav">
+    <a href="/">写作</a>
+    <a href="/tag/">标签</a>
+    <a href="/about">关于</a>
+    <a href="/atom.xml">RSS</a>
+  </nav>
+</header>
+
+<article class="article">
+  <header class="article-head">
+    <div class="kicker">
+      {{range $i, $t := .Tags}}{{if $i}} · {{end}}{{$t}}{{end}}{{if .Tags}} · {{end}}{{.CreateTime.Format "2006-01-02"}}
+    </div>
+    <h1 class="article-title">{{.Title}}</h1>
+    {{if .Summary}}<p class="article-lede">{{.Summary}}</p>{{end}}
+    <div class="article-meta">
+      <span>{{.ReadingTimeMin}} min read</span>
+      <span>{{.WordCount}} words</span>
+      {{if .ViewCount}}<span>{{.ViewCount}} views</span>{{end}}
+      {{if .AI}}<span class="ai-badge">🤖 {{.AILabel}}</span>{{end}}
+      <span class="article-meta-tags">
+        {{range .Tags}}<a href="/tag/{{.}}">#{{.}}</a>{{end}}
+      </span>
+    </div>
+    {{if .CoverURL}}
+    <figure class="article-cover"><img src="{{.CoverURL}}" alt="{{.Title}}"></figure>
+    {{end}}
+  </header>
+
+  <div class="prose">
+    {{.Parse}}
+  </div>
+
+  <footer class="article-foot">
+    <div class="kicker">— end —</div>
+    <div class="article-foot-meta">
+      {{range .Tags}}<a href="/tag/{{.}}" class="tag">#{{.}}</a>{{end}}
+    </div>
+    <div class="back"><a href="/">← 回到首页</a></div>
+  </footer>
+</article>
+
+<footer class="footer">
+  <span>© {{.Year}} {{.Site.Author}}. Built with <a href="https://github.com/sbraveyoung/gobog">gobog</a>.</span>
+</footer>
+
+<script>
+(function(){
+  var bar = document.querySelector('.reading-progress-bar');
+  if(!bar) return;
+  function update(){
+    var h = document.documentElement;
+    var p = (h.scrollTop) / (h.scrollHeight - h.clientHeight);
+    bar.style.width = Math.max(0, Math.min(1, p)) * 100 + '%';
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+</script>
+</body>
+</html>

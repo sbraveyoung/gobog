@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{if .Tag}}#{{.Tag}} · {{end}}{{.Site.Title}}</title>
+<meta name="description" content="{{.Site.Description}}">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body>
+
+<header class="mast">
+  <div class="mast-strip">
+    <span>vol. {{.Year}} · the reading notebook</span>
+    <span>{{.Now.Format "Monday, January 2, 2006"}}</span>
+    <span>{{.Site.Domain}}</span>
+  </div>
+  <div class="mast-name">
+    <div class="kicker accent">⁂   essays · notes · marginalia   ⁂</div>
+    <h1 class="title-mark"><a href="/">{{.Site.Title}}</a></h1>
+    <div class="kicker muted">since 2019 · by {{.Site.Author}}</div>
+    <nav class="mast-nav">
+      <a href="/" class="{{if not .Tag}}active{{end}}">Front</a>
+      <a href="/tag/">Tags</a>
+      <a href="/archive">Archive</a>
+      <a href="/about">About</a>
+      <a href="/atom.xml">RSS</a>
+    </nav>
+  </div>
+</header>
+
+<main class="press">
+
+{{if .Tag}}
+  <section class="page-intro">
+    <div class="kicker accent">── tag</div>
+    <h2 class="page-title">#{{.Tag}} <em>{{len .Articles}} essays</em></h2>
+  </section>
+{{else if .Group}}
+  <section class="page-intro">
+    <div class="kicker accent">── section</div>
+    <h2 class="page-title">{{.Group}}</h2>
+  </section>
+{{end}}
+
+{{/* Pinned / feature article: first pinned, else first article */}}
+{{with .Feature}}
+<article class="feature">
+  <div class="feature-text">
+    <div class="kicker accent">── cover story{{if .Tags}} · {{index .Tags 0}}{{end}}</div>
+    <h2 class="feature-title"><a href="{{.URL}}">{{.Title}}</a></h2>
+    {{if .Summary}}<p class="feature-lede"><em>{{.Summary}}</em></p>{{end}}
+    <div class="feature-meta">
+      <span>by {{$.Site.Author}} · {{.CreateTime.Format "2006-01-02"}}</span>
+      <span>continue reading →</span>
+    </div>
+  </div>
+  <div class="feature-art">
+    {{if .CoverURL}}
+      <img src="{{.CoverURL}}" alt="{{.Title}}">
+    {{else}}
+      <div class="feature-art-fallback">
+        <div class="art-num">FIG. 01</div>
+        <div class="art-tags">{{range .Tags}}#{{.}} {{end}}</div>
+      </div>
+    {{end}}
+  </div>
+</article>
+{{end}}
+
+{{/* Three-up digest of next 3 non-feature articles */}}
+{{if .Digest}}
+<section class="digest">
+  {{range $i, $a := .Digest}}
+  <article class="digest-col">
+    <div class="kicker accent">№{{printf "%02d" (add $i 2)}}{{if $a.Tags}} · {{index $a.Tags 0}}{{end}}</div>
+    <h3 class="digest-title"><a href="{{$a.URL}}">{{$a.Title}}</a></h3>
+    {{if $a.Summary}}<p class="digest-lede">{{$a.Summary}}</p>{{end}}
+    <div class="digest-meta">{{$a.CreateTime.Format "2006-01-02"}} · {{$a.ReadingTimeMin}} min</div>
+  </article>
+  {{end}}
+</section>
+{{end}}
+
+{{/* Long list */}}
+<section class="also">
+  <div class="also-label">also in<br>this issue</div>
+  <div class="also-list">
+    {{range $i, $a := .Rest}}
+    <a class="also-row" href="{{$a.URL}}">
+      <span class="also-num">{{printf "%02d" (add $i 5)}}</span>
+      <span class="also-title">{{$a.Title}}{{if $a.Tags}}<em class="also-tag">#{{index $a.Tags 0}}</em>{{end}}</span>
+      <span class="also-meta">{{$a.ReadingTimeMin}} min</span>
+    </a>
+    {{end}}
+  </div>
+</section>
+
+</main>
+
+<footer class="press-foot">
+  <span>set in DM Serif & Newsreader</span>
+  <span>built with <a href="https://github.com/sbraveyoung/gobog">gobog</a> · markdown · go</span>
+  <span>© {{.Year}} {{.Site.Author}}</span>
+</footer>
+</body>
+</html>

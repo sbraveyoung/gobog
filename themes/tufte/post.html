@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · {{.Site.Title}}</title>
+<meta name="description" content="{{.Summary}}">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Summary}}">
+<meta property="og:type" content="article">
+{{if .CoverURL}}<meta property="og:image" content="{{.CoverURL}}">{{end}}
+<link rel="canonical" href="{{.Canonical}}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body class="post-page">
+
+<header class="masthead">
+  <div class="brand">
+    <a href="/" class="brand-title">{{.Site.Author}}<em>'s notebook</em></a>
+    <div class="brand-sub">VOL. {{.CreateTime.Format "2006"}} · NO. §{{.WordCount}}</div>
+  </div>
+  <nav class="nav">
+    <a href="/"><em>essays</em></a>
+    <a href="/tag/">tags</a>
+    <a href="/archive">archive</a>
+    <a href="/about">about</a>
+    <a href="/atom.xml">atom</a>
+  </nav>
+</header>
+
+<main class="container">
+  <article class="layout">
+    <div class="main-col">
+      <div class="kicker">
+        ESSAY{{range .Tags}} · {{.}}{{end}} · {{.CreateTime.Format "January 2, 2006"}}
+      </div>
+      <h1 class="article-title">{{.Title}}</h1>
+      {{if .Summary}}<p class="article-lede">{{.Summary}}</p>{{end}}
+      <div class="article-meta">
+        <span>{{.ReadingTimeMin}} min read</span>
+        <span>·</span>
+        <span>{{.WordCount}} words</span>
+        {{if .ViewCount}}<span>·</span><span>{{.ViewCount}} reads</span>{{end}}
+        {{if .AI}}<span>·</span><span class="ai">🤖 {{.AILabel}}</span>{{end}}
+      </div>
+
+      {{if .CoverURL}}
+      <figure class="article-cover">
+        <img src="{{.CoverURL}}" alt="{{.Title}}">
+        <figcaption>Figure cover · {{.Title}}.</figcaption>
+      </figure>
+      {{end}}
+
+      <div class="prose">
+        {{.Parse}}
+      </div>
+
+      <footer class="article-foot">
+        <div class="kicker">cited under</div>
+        <div class="article-foot-tags">
+          {{range .Tags}}<a href="/tag/{{.}}">#{{.}}</a>{{end}}
+        </div>
+        <p class="back"><a href="/">← back to index</a></p>
+      </footer>
+    </div>
+
+    <aside class="side-col">
+      <div class="side-block">
+        <div class="side-head">page info</div>
+        <p>
+          <em>created</em> {{.CreateTime.Format "2006-01-02"}}<br>
+          <em>read in</em> {{.ReadingTimeMin}} min<br>
+          <em>words</em> {{.WordCount}}<br>
+          <em>views</em> {{.ViewCount}}
+        </p>
+      </div>
+      <div class="side-block">
+        <div class="side-head">tags</div>
+        <p class="side-tags">
+          {{range .Tags}}<a href="/tag/{{.}}">{{.}}</a>{{end}}
+        </p>
+      </div>
+      <div class="side-block">
+        <div class="side-head">marginalia</div>
+        <p>Footnotes appear here in the margin, beside the body line they refer to. The body is never interrupted by a numbered list at the bottom.</p>
+      </div>
+    </aside>
+  </article>
+</main>
+
+<footer class="footer">
+  <span>© {{.CreateTime.Format "2006"}} {{.Site.Author}}.</span>
+  <span><a href="{{.Canonical}}">{{.Canonical}}</a></span>
+</footer>
+</body>
+</html>

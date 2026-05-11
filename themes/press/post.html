@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · {{.Site.Title}}</title>
+<meta name="description" content="{{.Summary}}">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:description" content="{{.Summary}}">
+<meta property="og:type" content="article">
+{{if .CoverURL}}<meta property="og:image" content="{{.CoverURL}}">{{end}}
+<link rel="canonical" href="{{.Canonical}}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Inter:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body class="post-page">
+
+<header class="mast">
+  <div class="mast-strip">
+    <span>vol. {{.CreateTime.Format "2006"}}{{range .Tags}} · {{.}}{{end}}</span>
+    <span>{{.CreateTime.Format "Monday, January 2, 2006"}}</span>
+    <span>{{.Site.Domain}}</span>
+  </div>
+  <div class="mast-name compact">
+    <h1 class="title-mark small"><a href="/">{{.Site.Title}}</a></h1>
+    <nav class="mast-nav">
+      <a href="/">Front</a>
+      <a href="/tag/">Tags</a>
+      <a href="/archive">Archive</a>
+      <a href="/about">About</a>
+      <a href="/atom.xml">RSS</a>
+    </nav>
+  </div>
+</header>
+
+<article class="press-article">
+  <header class="press-article-head">
+    <div class="kicker accent">essay{{range .Tags}} · {{.}}{{end}} · {{.CreateTime.Format "January 2, 2006"}}</div>
+    <h1 class="press-article-title">
+      {{.Title}}
+    </h1>
+    <div class="press-rule"></div>
+    {{if .Summary}}<p class="press-article-lede"><em>{{.Summary}}</em></p>{{end}}
+    <div class="press-article-byline">
+      ── by {{.Site.Author}} · {{.ReadingTimeMin}} min read{{if .ViewCount}} · {{.ViewCount}} reads{{end}}{{if .AI}} · 🤖 {{.AILabel}}{{end}} ──
+    </div>
+  </header>
+
+  {{if .CoverURL}}
+  <figure class="press-cover">
+    <img src="{{.CoverURL}}" alt="{{.Title}}">
+    <figcaption>cover · {{.Title}}</figcaption>
+  </figure>
+  {{end}}
+
+  <div class="press-prose">
+    {{.Parse}}
+  </div>
+
+  <footer class="press-article-foot">
+    <div class="press-rule"></div>
+    <div class="kicker accent">cited under</div>
+    <div class="press-foot-tags">
+      {{range .Tags}}<a href="/tag/{{.}}">#{{.}}</a>{{end}}
+    </div>
+    <p class="press-back">← <a href="/">back to front page</a></p>
+  </footer>
+</article>
+
+<footer class="press-foot">
+  <span>colophon · set in DM Serif Display & Newsreader</span>
+  <span>built with <a href="https://github.com/sbraveyoung/gobog">gobog</a></span>
+  <span>© {{.CreateTime.Format "2006"}} {{.Site.Author}}</span>
+</footer>
+</body>
+</html>

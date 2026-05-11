@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{if .Tag}}#{{.Tag}} · {{end}}{{.Site.Title}}</title>
+<meta name="description" content="{{.Site.Description}}">
+<link rel="alternate" type="application/atom+xml" href="/atom.xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/theme.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand">
+    <a href="/" class="brand-title">{{.Site.Author}}<em>'s notebook</em></a>
+    <div class="brand-sub">VOL. {{.Year}} · {{.Site.Subtitle}}</div>
+  </div>
+  <nav class="nav">
+    <a href="/" class="{{if not .Tag}}active{{end}}"><em>essays</em></a>
+    <a href="/tag/" class="{{if .Tag}}active{{end}}">tags</a>
+    <a href="/archive">archive</a>
+    <a href="/about">about</a>
+    <a href="/atom.xml">atom</a>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="layout">
+    <section class="main-col">
+      {{if .Tag}}
+        <div class="kicker">tag</div>
+        <h1 class="page-title">#{{.Tag}} <span class="muted">· {{len .Articles}} essays</span></h1>
+      {{else if .Group}}
+        <div class="kicker">section</div>
+        <h1 class="page-title">{{.Group}}</h1>
+      {{else}}
+        <h1 class="page-title">On reading, <em>writing,</em><br>and the network in between.</h1>
+        <p class="lede">{{.Site.Description}}</p>
+      {{end}}
+
+      {{range $i, $a := .Articles}}
+      <article class="entry">
+        <div class="kicker">
+          {{if $a.Tags}}{{index $a.Tags 0}} · {{end}}{{$a.CreateTime.Format "2006-01-02"}}
+          · §{{printf "%02d" (add $i 1)}}
+        </div>
+        <h2 class="entry-title">
+          <a href="{{$a.URL}}">{{$a.Title}}</a>
+          {{if $a.Pinned}}<sup class="pin">★</sup>{{end}}
+          {{if $a.AI}}<sup class="ai">🤖 {{$a.AILabel}}</sup>{{end}}
+        </h2>
+        {{if $a.Summary}}<p class="entry-summary">{{$a.Summary}}</p>{{end}}
+        <div class="entry-meta">
+          {{$a.ReadingTimeMin}} min · {{$a.WordCount}} words{{if $a.ViewCount}} · {{$a.ViewCount}} reads{{end}}
+        </div>
+      </article>
+      {{end}}
+    </section>
+
+    <aside class="side-col">
+      <div class="side-block">
+        <div class="side-head">marginalia</div>
+        <p>This notebook follows Edward Tufte's <em>side-note</em> convention. Footnotes and marginalia float into this column instead of the bottom of the page.</p>
+      </div>
+      <div class="side-block">
+        <div class="side-head">tags, by weight</div>
+        <p class="side-tags">
+          {{range .AllTags}}<a href="/tag/{{.Name}}">{{.Name}}<sup>{{.Count}}</sup></a>{{end}}
+        </p>
+      </div>
+      <div class="side-block">
+        <div class="side-head">colophon</div>
+        <p>set in <em>IBM Plex Serif</em>. built with <a href="https://github.com/sbraveyoung/gobog">gobog</a>.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<footer class="footer">
+  <span>© {{.Year}} {{.Site.Author}}.</span>
+  <span><a href="/atom.xml">atom feed</a> · <a href="/sitemap.xml">sitemap</a></span>
+</footer>
+</body>
+</html>
