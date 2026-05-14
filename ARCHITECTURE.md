@@ -5,23 +5,26 @@ the rough edges still are. Updated whenever the layout changes.
 
 ```
 ┌─ Obsidian vault (local) ────────┐    ┌─ sbraveyoung/blog ─────────────┐
-│  Blog/                          │    │  source/                       │
-│    post/                        │    │    post/                       │
-│    pages/                       │ ◄──┤    pages/                      │
-│    resource/image/              │    │    resource/image/             │
+│  Blog/                          │    │  .                             │
+│    post/                        │    │  ├─ post/                      │
+│    pages/                       │ ◄──┤  ├─ pages/                     │
+│    resource/image/              │    │  └─ resource/image/            │
 │  ┌────────────────────────────┐ │    └────────────────┬───────────────┘
 │  │ gobog-obsidian plugin       │ │                    │
 │  │   • pull / push markdown    │ │                    │ push to master
 │  │   • auto front-matter       │ ├──►                 │ → repository_dispatch
 │  │   • WeChat draft (optional) │ │                    │   (event=blog-update)
-│  └────────────────────────────┘ │                    ▼
-└─────────────────────────────────┘    ┌─ sbraveyoung/sbraveyoung.github.io ┐
-                                       │  .github/workflows/deploy.yml:     │
-                                       │    1. checkout blog + gobog        │
-                                       │    2. go build _gobog/src          │
+│  │   • deploy status echo      │ │                    ▼
+│  └────────────────────────────┘ │    ┌─ sbraveyoung/sbraveyoung.github.io ┐
+└─────────────────────────────────┘    │  .github/workflows/deploy.yml:     │
+                                       │    1. checkout blog + gobog (pin)  │
+                                       │    2. go build _gobog/src (cached) │
                                        │    3. gobog -export _dist          │
-                                       │    4. cp _dist → working tree      │
-                                       │    5. commit + push                │
+                                       │    4. pagefind --site _dist        │
+                                       │    5. cp _dist → working tree      │
+                                       │    6. commit + push                │
+                                       │  .github/workflows/linkcheck.yml:  │
+                                       │    weekly external-link sweep      │
                                        │  _gobog.json controls theme +      │
                                        │  comments + brand                  │
                                        └────────────────────────────────────┘
@@ -58,20 +61,26 @@ overwrites the working tree.
 
 ## Improvements still worth doing
 
-1. **No client-side search on the static export.** Server mode has
-   `/search`; static mode doesn't (would need a JS lunr or pagefind
-   index emitted at build time). Punt for now — the blog isn't huge.
+1. ~~**No client-side search on the static export.**~~ **Done.** The
+   github.io deploy runs `pagefind --site _dist` after rendering and
+   `themes/minimal/index.html` pulls in the bundled UI on the home
+   page. Other themes (sepia, ocean, letter, press, tufte) haven't
+   been wired up — copy the `<link>` / `<script>` block from minimal
+   when you adopt one.
 2. **Atom feed item count is unbounded.** `buildAtomFeed` lists every
    post. With many years of writing this becomes a several-MB feed.
    Cap at e.g. 50 newest.
-3. **Image dedupe.** The legacy `<source>/image/` and the canonical
-   `<source>/resource/image/` are both copied to `<dist>/image/`. If
-   the same basename exists in both, the second overwrites the first.
-   In practice we only have one of them populated at a time; still
-   worth a guardrail.
-4. **No automated link checker.** Posts with `[]()` markdown links to
-   external sites can rot silently. A nightly workflow that runs a
-   simple HTTP HEAD across the export would catch them.
+3. ~~**Image dedupe.**~~ **Guardrail in place.** The github.io deploy
+   warns via `::warning::` when the same image basename exists in both
+   `_blog/image/` (legacy) and `_blog/resource/image/` (canonical).
+   The collision itself still silently overwrites — fixing it
+   structurally means picking one canonical home and removing the
+   other in the source.
+4. ~~**No automated link checker.**~~ **Done.** Weekly
+   `.github/workflows/linkcheck.yml` in github.io scans every external
+   `http(s)://` in the rendered HTML and surfaces 4xx/5xx/timeout as
+   workflow annotations (non-fatal by default; manual dispatch with
+   `fatal=true` for stricter runs).
 5. **WeChat IP whitelist friction.** Every machine the plugin runs from
    needs that egress IP whitelisted in the MP console. A tiny relay
    service on a VPS with a fixed IP would avoid that — but adds an
@@ -79,15 +88,19 @@ overwrites the working tree.
 6. **gobog dependency on beego logger.** Pulls in a fairly large
    transitive dep tree just for logging. Could be replaced with
    `log/slog` from the standard library. Cosmetic.
-7. **No preview-before-deploy on github.io.** The workflow renders
-   straight to main. For a one-author blog this is fine; for a team a
-   PR-preview workflow that publishes to a branch would help.
-8. **`cert/` in the blog repo.** Holds TLS keys for the legacy
-   self-hosted era. They aren't deployed anywhere by the current
-   pipeline, but they sit in the repo's history. Consider rotating
-   the certs out of git (move to a vault / 1Password) before the next
-   major commit. Treat anything currently in `cert/` as compromised
-   for hygiene.
+7. **Partial PR preview.** sbraveyoung/blog now has a
+   `.github/workflows/preview.yml` that dry-renders the site for every
+   PR and surfaces dead-link / orphan-resource warnings as annotations.
+   Still missing: a published preview URL (would require pushing to a
+   `gh-pages/<pr>` branch or an artifact deploy). Live with the
+   annotations until that's worth building.
+8. **GH_PAT single point of failure.** The deploy depends on a Fine-
+   grained PAT tied to one user account. Expires / revoked / suspended
+   → deploys break silently. See `docs/AUTH.md` in the github.io repo
+   for the GitHub App migration path; do it when (a) you start using
+   AI-coding agents that need a bot identity, (b) you want per-repo
+   audit logs, or (c) you don't want deploys to break the day you
+   take a sabbatical.
 
 ## Dead-link audit (one-time)
 
@@ -107,6 +120,9 @@ Done as part of the current refresh:
 Re-run periodically with:
 
 ```sh
-grep -rln "github\.com/SmartBrave" source/post
-grep -rln "file:///" source/post
+grep -rln "github\.com/SmartBrave" post
+grep -rln "file:///" post
 ```
+
+(Source paths are at the repo root now — `post/`, `pages/`,
+`resource/image/`. The historical `source/` prefix is gone.)
