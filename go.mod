@@ -8,7 +8,7 @@ require (
 	github.com/facebookarchive/grace v0.0.0-20180706040059-75cf19382434
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/yuin/goldmark v1.4.15
-	golang.org/x/image v0.38.0
+	golang.org/x/image v0.41.0
 )
 
 require (
