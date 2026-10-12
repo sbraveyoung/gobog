@@ -1,6 +1,8 @@
 package blog
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	pathpkg "path"
 	"path/filepath"
@@ -18,7 +20,7 @@ import (
 // BlogTypes maps a logical type to its directory under <source>.
 //   - "post"  → <source>/post/   (recursively scanned, becomes /post/...)
 //   - "page"  → <source>/pages/  (each <name>.md becomes /<name>, e.g.
-//                                  pages/about.md → /about)
+//     pages/about.md → /about)
 //
 // Pages replace the old hardcoded "about" page. Any number of top-level
 // pages can live under pages/; they all show in the site header nav.
@@ -179,6 +181,9 @@ func (b *BlogST) Reload() error {
 		return err
 	}
 	articles[BlogTypes["page"]] = pages
+	if err := validateRoutes(articles); err != nil {
+		return err
+	}
 
 	indexNotes(wiki, articles[BlogTypes["post"]])
 	indexNotes(wiki, pages)
@@ -186,13 +191,58 @@ func (b *BlogST) Reload() error {
 		logs.Warn("image index:", err)
 	}
 
-	tagIndex := buildTagIndex(articles[BlogTypes["post"]])
+	tagIndex := buildTagIndex(append(append(articlepkg.Articles{}, articles[BlogTypes["post"]]...), pages...))
 
 	b.mu.Lock()
 	b.articles = articles
 	b.byTag = tagIndex
 	b.wiki = wiki
 	b.mu.Unlock()
+	return nil
+}
+
+// validateRoutes prevents silent HTML overwrites and source URLs escaping the
+// export directory. URL permanence is preserved; invalid routes are reported.
+func validateRoutes(articles map[string]articlepkg.Articles) error {
+	seen := map[string]string{}
+	var walk func(articlepkg.Articles) error
+	walk = func(list articlepkg.Articles) error {
+		for _, a := range list {
+			u, err := url.Parse(a.URL)
+			if err != nil || u.IsAbs() || u.Host != "" || u.RawQuery != "" || u.Fragment != "" || !strings.HasPrefix(a.URL, "/") || strings.Contains(a.URL, "\\") {
+				return fmt.Errorf("invalid article URL %q in %s", a.URL, a.Source)
+			}
+			route := strings.TrimSuffix(u.Path, "/")
+			if route == "" || pathpkg.Clean(route) != route {
+				return fmt.Errorf("invalid article URL %q in %s", a.URL, a.Source)
+			}
+			first := strings.Split(strings.TrimPrefix(route, "/"), "/")[0]
+			switch first {
+			case "css", "js", "image", "tag", "search", "snippet", "healthz", "bing_img", "atom.xml", "sitemap.xml", "robots.txt", "404.html", "CNAME", "_pagefind":
+				return fmt.Errorf("reserved article URL %q in %s", a.URL, a.Source)
+			}
+			if strings.HasPrefix(first, ".") || strings.HasPrefix(first, "_") {
+				return fmt.Errorf("reserved article URL %q in %s", a.URL, a.Source)
+			}
+			source := a.Source
+			if source == "" {
+				source = a.Title + " (group)"
+			}
+			if prev, ok := seen[route]; ok {
+				return fmt.Errorf("duplicate article URL %q: %s and %s", route, prev, source)
+			}
+			seen[route] = source
+			if err := walk(a.SubArticle); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, typ := range []string{BlogTypes["post"], BlogTypes["page"]} {
+		if err := walk(articles[typ]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -362,6 +412,9 @@ func buildArticle(path, walkRoot, urlPrefix, fileName string) (*articlepkg.Artic
 		return nil, nil
 	}
 	if a.IsHidden() && !config.C.Blog.IncludeHidden {
+		return nil, nil
+	}
+	if a.IsPrivate() && config.ExportDir != "" {
 		return nil, nil
 	}
 

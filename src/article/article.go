@@ -15,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/astaxie/beego/logs"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -30,15 +31,16 @@ const wordsPerMinute = 250
 // Meta is the front-matter struct. All fields stay string-typed because the
 // reflective rewriter formats values as plain text.
 type Meta struct {
-	Title         string `meta:"title"`
-	Description   string `meta:"description"`
-	Author        string `meta:"author"`
-	CreateTime    string `meta:"create_time"`
-	Category      string `meta:"category"`
-	TagsRaw       string `meta:"tags"`
-	Id            string `meta:"id"`
-	URL           string `meta:"url"`
-	Draft         string `meta:"draft"`
+	Title       string `meta:"title"`
+	Description string `meta:"description"`
+	Author      string `meta:"author"`
+	CreateTime  string `meta:"create_time"`
+	Category    string `meta:"category"`
+	TagsRaw     string `meta:"tags"`
+	Id          string `meta:"id"`
+	URL         string `meta:"url"`
+	Draft       string `meta:"draft"`
+	Publish     string `meta:"publish"`
 	// Pin sticks an article to the top of its containing listing,
 	// overriding the usual create_time descending order.
 	Pin string `meta:"pin"`
@@ -76,7 +78,8 @@ type Article struct {
 	ReadingTimeMin int
 	SubArticle     Articles
 
-	parsedHTML atomic.Value
+	frontMatter *yaml.Node
+	parsedHTML  atomic.Value
 }
 
 func (a *Article) CachedHTML() (string, bool) {
@@ -89,7 +92,11 @@ func (a *Article) CachedHTML() (string, bool) {
 func (a *Article) StoreHTML(html string) { a.parsedHTML.Store(html) }
 
 // IsDraft reports whether front-matter marks this article as a draft.
-func (a *Article) IsDraft() bool { return truthy(a.Draft) }
+func (a *Article) IsDraft() bool {
+	// Missing publish preserves historical behavior; explicit non-truthy
+	// values withhold publication. Draft always takes precedence.
+	return truthy(a.Draft) || (strings.TrimSpace(a.Publish) != "" && !truthy(a.Publish))
+}
 
 // IsPinned sticks the article to the top of its containing listing,
 // overriding create_time order.
@@ -285,84 +292,120 @@ func RewriteFrontMatter(a *Article) error {
 // parseInto reads YAML-ish front-matter + body into a, leaving derived fields
 // (Tags, Summary, WordCount) for finalizeDerived.
 func parseInto(a *Article, reader *bufio.Reader) error {
-	stat := START
-	for {
-		line, err := reader.ReadBytes('\n')
-		if err == io.EOF {
-			if len(line) > 0 && stat != META_BEGIN {
-				a.Content = append(a.Content, line...)
-			}
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read: %w", err)
-		}
-
-		switch stat {
-		case START:
-			if strings.HasPrefix(string(line), "---") {
-				stat = META_BEGIN
-			} else {
-				stat = NO_META
-				a.Content = append(a.Content, line...)
-			}
-		case NO_META:
-			a.Content = append(a.Content, line...)
-		case META_BEGIN:
-			if strings.HasPrefix(string(line), "---") {
-				stat = META_END
-				continue
-			}
-			slice := bytes.SplitN(line, []byte(":"), 2)
-			if len(slice) < 2 {
-				continue
-			}
-			key := strings.TrimSpace(string(slice[0]))
-			value := strings.TrimSpace(string(slice[1]))
-			// Obsidian writes tags as a YAML array (`tags: [a, b]`). Strip
-			// the brackets so parseTags sees a clean comma list.
-			if key == "tags" {
-				value = strings.TrimPrefix(value, "[")
-				value = strings.TrimSuffix(value, "]")
-			}
-			v := reflect.ValueOf(&(a.Meta)).Elem()
-			for i := 0; i < v.NumField(); i++ {
-				field := v.Type().Field(i)
-				tagName := field.Tag.Get("meta")
-				if tagName == "" {
-					tagName = strings.ToLower(field.Name)
-				}
-				if tagName == key {
-					v.FieldByName(field.Name).Set(reflect.ValueOf(value))
-				}
-			}
-		case META_END:
-			a.Content = append(a.Content, line...)
-		}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return fmt.Errorf("read: %w", err)
 	}
-	return nil
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	lines := bytes.SplitAfter(data, []byte("\n"))
+	if len(lines) == 0 || strings.TrimSpace(string(lines[0])) != "---" {
+		a.Content = data
+		return nil
+	}
+	var header []byte
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(string(lines[i])) == "---" {
+			var doc yaml.Node
+			if err := yaml.Unmarshal(header, &doc); err != nil {
+				return fmt.Errorf("front matter in %s: %w", a.Source, err)
+			}
+			if len(doc.Content) > 0 {
+				mapping := doc.Content[0]
+				if mapping.Kind != yaml.MappingNode {
+					return fmt.Errorf("front matter in %s must be a YAML mapping", a.Source)
+				}
+				var validated map[string]interface{}
+				if err := mapping.Decode(&validated); err != nil {
+					return fmt.Errorf("front matter in %s: %w", a.Source, err)
+				}
+				a.frontMatter = mapping
+				meta := reflect.ValueOf(&a.Meta).Elem()
+				for j := 0; j < len(mapping.Content); j += 2 {
+					key, value := mapping.Content[j].Value, mapping.Content[j+1]
+					for k := 0; k < meta.NumField(); k++ {
+						if meta.Type().Field(k).Tag.Get("meta") != key {
+							continue
+						}
+						text := ""
+						if value.Tag == "!!null" {
+							text = ""
+						} else if key == "tags" && value.Kind == yaml.SequenceNode {
+							var tags []string
+							for _, tag := range value.Content {
+								if tag.Kind != yaml.ScalarNode {
+									return fmt.Errorf("tags in %s must be scalars", a.Source)
+								}
+								tags = append(tags, tag.Value)
+							}
+							text = strings.Join(tags, ",")
+						} else if value.Kind == yaml.ScalarNode {
+							text = value.Value
+						} else {
+							return fmt.Errorf("%s in %s must be a scalar", key, a.Source)
+						}
+						meta.Field(k).SetString(text)
+					}
+				}
+			}
+			a.Content = bytes.Join(lines[i+1:], nil)
+			return nil
+		}
+		header = append(header, lines[i]...)
+	}
+	return fmt.Errorf("front matter in %s has no closing ---", a.Source)
 }
 
 func rewriteFrontMatter(file *os.File, a *Article) error {
+	// Preserve unknown properties, YAML lists and comments when adding defaults.
+	mapping := a.frontMatter
+	if mapping == nil {
+		mapping = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	}
+	meta := reflect.ValueOf(&a.Meta).Elem()
+	for i := 0; i < meta.NumField(); i++ {
+		key, value := meta.Type().Field(i).Tag.Get("meta"), meta.Field(i).String()
+		found := -1
+		for j := 0; j < len(mapping.Content); j += 2 {
+			if mapping.Content[j].Value == key {
+				found = j + 1
+				break
+			}
+		}
+		if found >= 0 {
+			old := mapping.Content[found]
+			// A sequence of tags is already represented in TagsRaw; keep its node.
+			if key == "tags" && old.Kind == yaml.SequenceNode {
+				continue
+			}
+			if old.Value == value || (old.Tag == "!!null" && value == "") {
+				continue
+			}
+			mapping.Content[found] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+		} else if value != "" {
+			mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
+		}
+	}
+	var out bytes.Buffer
+	out.WriteString("---\n")
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(mapping); err != nil {
+		return err
+	}
+	if err := encoder.Close(); err != nil {
+		return err
+	}
+	out.WriteString("---\n")
+	out.Write(a.Content)
+	// Serialize before truncating, so invalid metadata never destroys a note.
 	if _, err := file.Seek(0, 0); err != nil {
 		return fmt.Errorf("seek: %w", err)
 	}
 	if err := file.Truncate(0); err != nil {
 		return fmt.Errorf("truncate: %w", err)
 	}
-	w := bufio.NewWriter(file)
-	out := []byte("---\n")
-	v := reflect.ValueOf(&(a.Meta)).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Type().Field(i)
-		out = append(out, []byte(field.Tag.Get("meta")+": "+v.FieldByName(field.Name).String()+"\n")...)
-	}
-	out = append(out, []byte("---\n")...)
-	out = append(out, a.Content...)
-	if _, err := w.Write(out); err != nil {
-		return err
-	}
-	return w.Flush()
+	_, err := file.Write(out.Bytes())
+	return err
 }
 
 func finalizeDerived(a *Article) {

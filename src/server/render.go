@@ -3,6 +3,10 @@ package server
 import (
 	"bytes"
 	"fmt"
+	stdhtml "html"
+	"net/url"
+	pathpkg "path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,12 +29,13 @@ var mdRenderer = goldmark.New(
 )
 
 // Wikilink syntax (Obsidian):
-//   [[Page Title]]                  → link to a note titled "Page Title"
-//   [[Page Title|display text]]     → link with custom anchor text
-//   [[Page Title#section]]          → fragment after the path is appended
-//   ![[image.png]]                  → embed an image
-//   ![[note]]                       → embed of another note (rendered as link;
-//                                     full inlining is intentionally out of scope)
+//
+//	[[Page Title]]                  → link to a note titled "Page Title"
+//	[[Page Title|display text]]     → link with custom anchor text
+//	[[Page Title#section]]          → fragment after the path is appended
+//	![[image.png]]                  → embed an image
+//	![[note]]                       → embed of another note (rendered as link;
+//	                                  full inlining is intentionally out of scope)
 //
 // We pre-process the markdown text before handing it to goldmark so this
 // stays decoupled from goldmark internals. Order matters: ![[ must be matched
@@ -58,10 +63,43 @@ func renderArticleHTML(article *articlepkg.Article) (string, error) {
 	if err := mdRenderer.Convert(src, &buf); err != nil {
 		return "", fmt.Errorf("render %q: %w", article.URL, err)
 	}
-	out := restoreMath(buf.String(), mathStash)
+	out := normalizeAssetLinks(restoreMath(buf.String(), mathStash))
 
 	article.StoreHTML(out)
 	return out, nil
+}
+
+// Export flattens the canonical resource/image prefix into /image. Keep
+// wikilinks and regular Markdown images on that same host-independent URL.
+func assetURL(rel string) string {
+	rel = strings.TrimPrefix(filepath.ToSlash(rel), "./")
+	rel = strings.TrimPrefix(rel, "resource/image/")
+	rel = strings.TrimPrefix(rel, "image/")
+	return (&url.URL{Path: "/image/" + rel}).String()
+}
+
+var assetAttrRE = regexp.MustCompile(`(src|href)="([^"]+)"`)
+
+func normalizeAssetLinks(content string) string {
+	return assetAttrRE.ReplaceAllStringFunc(content, func(m string) string {
+		parts := assetAttrRE.FindStringSubmatch(m)
+		u, err := url.Parse(stdhtml.UnescapeString(parts[2]))
+		if err != nil || u.IsAbs() || u.Host != "" || !isImageRef(u.Path) {
+			return m
+		}
+		p := strings.TrimLeft(pathpkg.Clean(u.Path), "./")
+		if strings.HasPrefix(p, "resource/image/") || strings.HasPrefix(p, "image/") {
+			u.Path, _ = url.PathUnescape(assetURL(p))
+		} else if rel := blog.Blog.Wiki().ResolveImage(filepath_Base(u.Path)); rel != "" {
+			canonical, _ := url.Parse(assetURL(rel))
+			u.Path = canonical.Path
+		} else {
+			return m
+		}
+		// RawPath from the old URL must not override the canonical path.
+		u.RawPath = ""
+		return parts[1] + `="` + stdhtml.EscapeString(u.String()) + `"`
+	})
 }
 
 // Block-level math: $$...$$ across multiple lines, and the LaTeX
@@ -69,8 +107,8 @@ func renderArticleHTML(article *articlepkg.Article) (string, error) {
 // false positives on prose containing $ (shell snippets, currency).
 // Authors who want inline math can use \(...\) which is also captured.
 var (
-	mathBlockRE  = regexp.MustCompile(`(?s)\$\$.*?\$\$`)
-	mathParenRE  = regexp.MustCompile(`(?s)\\\(.*?\\\)`)
+	mathBlockRE   = regexp.MustCompile(`(?s)\$\$.*?\$\$`)
+	mathParenRE   = regexp.MustCompile(`(?s)\\\(.*?\\\)`)
 	mathBracketRE = regexp.MustCompile(`(?s)\\\[.*?\\\]`)
 )
 
@@ -120,7 +158,7 @@ func expandWikilinks(src []byte, wiki *blog.WikiIndex) []byte {
 			if path == "" {
 				return []byte(htmlEscape(alt))
 			}
-			return []byte(fmt.Sprintf(`<img src="/image/%s" alt=%q>`, path, alt))
+			return []byte(fmt.Sprintf(`<img src="%s" alt="%s">`, stdhtml.EscapeString(assetURL(path)), stdhtml.EscapeString(alt)))
 		}
 		// Note embeds aren't fully inlined; render as a link instead.
 		if u := wiki.ResolveNote(target); u != "" {

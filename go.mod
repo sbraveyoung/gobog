@@ -9,6 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/yuin/goldmark v1.4.15
 	golang.org/x/image v0.38.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

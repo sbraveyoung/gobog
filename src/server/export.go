@@ -5,19 +5,21 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	stdhtml "html"
 	"html/template"
 	"io"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/astaxie/beego/logs"
 	articlepkg "github.com/sbraveyoung/gobog/src/article"
 	"github.com/sbraveyoung/gobog/src/blog"
 	"github.com/sbraveyoung/gobog/src/config"
-	"github.com/astaxie/beego/logs"
 )
 
 // Export renders the entire site as static HTML/XML into outDir. Layout matches
@@ -57,6 +59,9 @@ func Export(outDir string) error {
 		return err
 	}
 	if err := exportTags(outDir); err != nil {
+		return err
+	}
+	if err := exportCollection(outDir, "/archive", "Archive", withoutPrivate(blog.Blog.AllPosts())); err != nil {
 		return err
 	}
 	if err := exportFeeds(outDir); err != nil {
@@ -129,6 +134,9 @@ func exportAllThemes(outDir string) error {
 		if err := exportTags(themeOut); err != nil {
 			return fmt.Errorf("export theme %q tags: %w", name, err)
 		}
+		if err := exportCollection(themeOut, "/archive", "Archive", withoutPrivate(blog.Blog.AllPosts())); err != nil {
+			return err
+		}
 		if err := exportNotFound(themeOut); err != nil {
 			return fmt.Errorf("export theme %q 404: %w", name, err)
 		}
@@ -190,6 +198,7 @@ var pathAttrRE = regexp.MustCompile(`(href|src|action)="(/[^"]*)"`)
 // the static switcher and its manifest always resolve from the document root
 // regardless of which theme subtree the visitor is in.
 var pathsThatStayAtRoot = []string{
+	"/atom.xml", "/sitemap.xml", "/robots.txt", "/_pagefind/",
 	"/__themes/",
 	"/__themes.json",
 	"/__theme-switcher.js",
@@ -358,6 +367,11 @@ func withoutPrivate(list articlepkg.Articles) articlepkg.Articles {
 				continue
 			}
 		}
+		// Groups carry their filtered children into home/navigation templates.
+		// Avoid changing the shared in-memory tree used by HTTP mode.
+		if len(a.SubArticle) > 0 {
+			a = &articlepkg.Article{Meta: a.Meta, Source: a.Source, Content: a.Content, Parse: a.Parse, Tags: a.Tags, Summary: a.Summary, WordCount: a.WordCount, ReadingTimeMin: a.ReadingTimeMin, SubArticle: withoutPrivate(a.SubArticle)}
+		}
 		out = append(out, a)
 	}
 	return out
@@ -375,10 +389,35 @@ func exportLeaf(outDir string, a *articlepkg.Article) error {
 	return writeFile(urlToFile(outDir, a.URL), body)
 }
 
+func exportCollection(outDir, route, title string, list articlepkg.Articles) error {
+	tpl, fallback, err := loadGroupTemplate(config.C.Blog.Theme)
+	if err != nil {
+		return err
+	}
+	group := &articlepkg.Article{Meta: articlepkg.Meta{Title: title, URL: route}}
+	var view interface{}
+	if fallback {
+		view = newGroupAsIndexView(group, list)
+	} else {
+		view = newGroupView(group, list)
+	}
+	var buf bytes.Buffer
+	if err := tpl.Execute(&buf, view); err != nil {
+		return err
+	}
+	return writeFile(urlToFile(outDir, route), buf.Bytes())
+}
+
 func exportTags(outDir string) error {
 	tags := blog.Blog.Tags()
-	if len(tags) == 0 {
-		return nil
+	var entries articlepkg.Articles
+	for _, tag := range tags {
+		if len(withoutPrivate(blog.Blog.PostsByTag(tag))) > 0 {
+			entries = append(entries, &articlepkg.Article{Meta: articlepkg.Meta{Title: "#" + tag, URL: "/tag/" + tag}})
+		}
+	}
+	if err := exportCollection(outDir, "/tag", "Tags", entries); err != nil {
+		return err
 	}
 	t, indexFallback, err := loadGroupTemplate(config.C.Blog.Theme)
 	if err != nil {
@@ -488,55 +527,81 @@ func copyAssets(outDir string) error {
 		}
 	}
 
-	// New canonical layout: <source>/resource/image/. Anything under it is
-	// copied wholesale to <outDir>/image/. We also still honor the legacy
-	// <source>/image/ tree for repos that haven't migrated yet.
-	for _, prefix := range []string{
-		filepath.Join("resource", "image"),
-		"image",
-	} {
-		dir := filepath.Join(config.C.Blog.Source, prefix)
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			if err := copyTree(dir, filepath.Join(outDir, "image")); err != nil {
-				return fmt.Errorf("copy %s: %w", dir, err)
+	// Copy only attachments referenced by rendered public pages. Draft/private
+	// images and stray non-Markdown notes must not become public static files.
+	referenced := map[string]bool{}
+	if err := filepath.Walk(outDir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || filepath.Ext(p) != ".html" {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, m := range assetAttrRE.FindAllStringSubmatch(string(data), -1) {
+			u, err := url.Parse(stdhtml.UnescapeString(m[2]))
+			if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/image/") {
+				continue
 			}
+			rel := strings.TrimPrefix(u.Path, "/image/")
+			safe := rel != "" && pathpkg.Clean(rel) == rel && !strings.HasPrefix(rel, "/") && !strings.Contains(rel, "\\")
+			for _, part := range strings.Split(rel, "/") {
+				if strings.HasPrefix(part, ".") {
+					safe = false
+				}
+			}
+			if safe {
+				referenced[rel] = true
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	source, err := filepath.EvalSymlinks(config.C.Blog.Source)
+	if err != nil {
+		return err
+	}
+	source, err = filepath.Abs(source)
+	if err != nil {
+		return err
+	}
+	for rel := range referenced {
+		for _, prefix := range []string{"resource/image", "image", ""} {
+			candidate := filepath.Join(source, prefix, filepath.FromSlash(rel))
+			real, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				continue
+			}
+			if !strings.HasPrefix(real, source+string(filepath.Separator)) {
+				continue
+			}
+			fi, err := os.Stat(real)
+			if err != nil || !fi.Mode().IsRegular() {
+				continue
+			}
+			if err := copyFile(real, filepath.Join(outDir, "image", filepath.FromSlash(rel))); err != nil {
+				return err
+			}
+			break
 		}
 	}
-
-	// Vault fallback: every non-.md file referenced by the image index that
-	// isn't already covered above gets copied to <outDir>/image/<rel-path>.
-	source := config.C.Blog.Source
-	return filepath.Walk(source, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") && p != source {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		name := info.Name()
-		if strings.HasSuffix(name, ".md") || strings.HasPrefix(name, ".") {
-			return nil
-		}
-		rel, err := filepath.Rel(source, p)
-		if err != nil {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		// Skip what the canonical / legacy copies above already handled.
-		if strings.HasPrefix(relSlash, "resource/image/") || strings.HasPrefix(relSlash, "image/") {
-			return nil
-		}
-		return copyFile(p, filepath.Join(outDir, "image", rel))
-	})
+	return nil
 }
 
 func copyTree(src, dst string) error {
 	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if p != src && strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		rel, err := filepath.Rel(src, p)
 		if err != nil {

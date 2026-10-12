@@ -391,3 +391,9 @@ automatically when the underlying file changes.
 
 MIT (see `LICENSE` once added; the upstream repo doesn't currently ship one
 but contributions are welcome under MIT).
+
+## Publishing contract
+
+Front matter is YAML: quoted values, block lists and multiline text are supported. An explicit `publish: false` suppresses publication, just like `draft: true`; missing `publish` preserves legacy behavior. Obsidian creates new posts as drafts. Duplicate, reserved and unsafe routes fail scanning instead of silently overwriting output. Static export includes only attachments referenced by public pages, with archive and tag indexes for every theme.
+
+The Obsidian plugin syncs Markdown; GitHub Actions renders and deploys HTML. Private source checkouts require a credential with Contents: Read on the source repository. An Actions-based Pages site requires `upload-pages-artifact` and `deploy-pages`; committing generated HTML alone does not publish it. Pin the renderer in the site configuration and select the Go toolchain from its `go.mod`.

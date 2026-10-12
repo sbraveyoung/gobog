@@ -64,6 +64,8 @@ CRC32 hex，保证 URL 始终可寻址）。
 扫描永远是递归的——`[blog].layout` 只控制**新文章的 URL 生成策略**：
 `"vault"`（默认）按 slug 化路径生成；`"legacy"` 复刻老 gobog 的
 `/post/<crc32(parent)>/<crc32(body)>` 形式（保住已发布站点的 hex URL）。
+重复的文章 URL、与分组冲突的 URL 和不安全的 URL 会使扫描报错，避免导出互相覆盖。
+
 扫到缺 `id` / `url` / `title` / `create_time` 的笔记时，扫描器会按既定规则
 补齐并**写回 `.md` 文件**——这是 gobog 的产品设计，URL 钉死后即使你把文件
 改名或移动也不会变。
@@ -88,8 +90,7 @@ JavaScript，只是 CSS 颜色 token 不同。每个主题都支持：
 
 ## Front-matter
 
-两条 `---` 之间的 YAML，所有字段都可选。（注意：正文里别用 `---` 作分隔线，
-用 `***` 替代。）
+两条 `---` 之间的 YAML，支持引号、注释、块列表和多行文本；正文中的 `---` 分隔线会被保留。所有字段都可选。
 
 ```yaml
 ---
@@ -101,6 +102,7 @@ tags: [networking, http]               # YAML 列表或 "a, b, c" 形式都可�
 cover: hero.png                        # 裸文件名 → /image/hero.png；URL 直通
 url: /post/tech/http                   # 覆盖自动生成的 slug
 id: stable-id                          # legacy 模式下用作 /post/<id>
+publish: false                         # 明确不发表；不写时兼容旧文章默认发表
 draft: true                            # 排除在列表之外（除非 include_drafts）
 hidden: true                           # 跟 draft 类似，语义上是"暂时下线"
 private: true                          # 列出但正文需要 HTTP Basic 认证
@@ -335,3 +337,11 @@ Markdown 渲染按 `*Article` 通过 `sync/atomic.Value` 缓存。热加载会�
 ## License
 
 MIT（待补充 `LICENSE`；上游仓库目前没有 license 文件，欢迎以 MIT 协议贡献）。
+
+## 发布管线
+
+Obsidian 插件同步 Markdown 到源仓库；源仓库通过 `repository_dispatch` 触发博客仓库。博客仓库用 `_gobog.json` 中的 `gobog_ref` 固定渲染器版本，配置 Go 版本时读取 `go.mod`。私有源仓库 checkout 必须使用拥有源仓库 Contents: Read 权限的凭据。Pages 设为 Actions 时，工作流必须上传并部署 Pages artifact，提交 HTML 不会替代这一步。
+
+新文章默认 `draft: true`；写完改为 `draft: false` 再推送。已有文章不改状态。`publish: false`、`draft: true`、`hidden: true` 任意一个都会阻止正常发布；静态导出始终不提供 `private: true` 的正文。取消发表后应重新导出到新的目录并部署。
+
+静态导出只复制公开页面引用的附件，跳过点文件和未引用资源；切换主题时 RSS 保持使用根目录订阅地址。`/archive`、`/tag/` 和每个标签页都会导出。
