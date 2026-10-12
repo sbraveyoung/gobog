@@ -27,7 +27,7 @@ func setupSnippetTest(t *testing.T) (string, func()) {
 		PasswordHash: hashPassword("pw"),
 	}
 	// Use the actual theme so the post template can be parsed for show().
-	config.C.Blog.Theme = filepath.Join(repoRoot(t), "themes", "simple")
+	config.C.Blog.Theme = filepath.Join(repoRoot(t), "themes", "minimal")
 	config.C.Blog.Domain = "https://example.com"
 
 	return tmp, func() {
