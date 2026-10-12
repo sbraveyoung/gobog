@@ -32,7 +32,7 @@
   </nav>
 </header>
 
-<article class="article">
+<article class="article" data-pagefind-body>
   <header class="article-head">
     <div class="kicker">
       {{range $i, $t := .Tags}}{{if $i}} · {{end}}{{$t}}{{end}}{{if .Tags}} · {{end}}{{.CreateTime.Format "2006-01-02"}}

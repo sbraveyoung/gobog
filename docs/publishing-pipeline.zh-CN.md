@@ -123,3 +123,5 @@ python3 /path/to/sbraveyoung.github.io/scripts/check-export.py /path/to/fresh-ou
 整理工具先解析所有文章再写入，保留正文原始字节、已有标识和链接、已有非空作者与日期、自定义 YAML 属性、注释；补全核心字段、规范开关与标签列表，并生成完整备份。重复运行应显示 `changed=0`。它只整理实际文章，不修改根目录说明、点文件、模板或 `_folder.md`。
 
 站点通过 `_gobog.json` 的完整 `gobog_ref` 固定渲染器版本；更新 gobog 后需要同步更新这个 SHA，避免本地预览使用新功能而线上使用旧逻辑。源码 PR 预览也读取同一个配置。当前工作流不通过定时任务兜底，正常链路依赖 Notify 的有效 GitHub 凭据；遇到 Notify 失败可查看日志并在站点仓库手动触发 Deploy。
+
+搜索构建只读取主路由的文章与独立页面正文，排除 `__themes` 副本及首页、标签、分组、归档列表，避免同一篇文章重复出现。模板使用 `data-pagefind-body` 标记正文范围，工作流使用 glob 排除主题副本，依据 [Pagefind 索引规则](https://pagefind.app/docs/indexing/) 与 [CLI 配置](https://pagefind.app/docs/config-options/)。
