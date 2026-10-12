@@ -27,7 +27,7 @@
       <a href="/" class="{{if not .Tag}}active{{end}}">Front</a>
       <a href="/tag/">Tags</a>
       <a href="/archive">Archive</a>
-      <a href="/about">About</a>
+      {{range .Site.Pages}}<a href="{{.URL}}">{{if eq .URL "/about"}}About{{else}}{{.Title}}{{end}}</a>{{end}}
       <a href="/atom.xml">RSS</a>
     </nav>
   </div>

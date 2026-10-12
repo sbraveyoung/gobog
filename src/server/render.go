@@ -16,8 +16,10 @@ import (
 	"github.com/sbraveyoung/gobog/src/blog"
 	"github.com/sbraveyoung/gobog/src/config"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
 )
 
 var mdRenderer = goldmark.New(
@@ -60,7 +62,9 @@ func renderArticleHTML(article *articlepkg.Article) (string, error) {
 	src, mathStash := protectMath(src)
 
 	var buf bytes.Buffer
-	if err := mdRenderer.Convert(src, &buf); err != nil {
+	doc := mdRenderer.Parser().Parse(text.NewReader(src))
+	removeUnpublishedLinks(doc, article.URL)
+	if err := mdRenderer.Renderer().Render(&buf, src, doc); err != nil {
 		return "", fmt.Errorf("render %q: %w", article.URL, err)
 	}
 	out := normalizeAssetLinks(restoreMath(buf.String(), mathStash))
@@ -621,4 +625,49 @@ func coverURL(raw string) string {
 		return v
 	}
 	return "/image/" + v
+}
+
+// Keep the authored label and formatting, but do not emit dead links to
+// withheld notes. Unknown URLs remain links so the export checker catches typos.
+func removeUnpublishedLinks(doc ast.Node, articleURL string) {
+	links := []*ast.Link{}
+	base, _ := url.Parse(strings.TrimRight(articleURL, "/") + "/")
+	domain, _ := url.Parse(config.C.Blog.Domain)
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		link, ok := n.(*ast.Link)
+		if !entering || !ok {
+			return ast.WalkContinue, nil
+		}
+		target, err := url.Parse(string(link.Destination))
+		if err != nil {
+			return ast.WalkContinue, nil
+		}
+		if target.Host != "" && (domain == nil || target.Host != domain.Host) {
+			return ast.WalkContinue, nil
+		}
+		if target.Scheme != "" && target.Scheme != "http" && target.Scheme != "https" {
+			return ast.WalkContinue, nil
+		}
+		route := target.Path
+		if target.Host == "" && base != nil {
+			route = base.ResolveReference(target).Path
+		}
+		if blog.Blog.IsUnpublishedURL(route) {
+			links = append(links, link)
+		}
+		return ast.WalkContinue, nil
+	})
+	for _, link := range links {
+		parent := link.Parent()
+		if parent == nil {
+			continue
+		}
+		for child := link.FirstChild(); child != nil; {
+			next := child.NextSibling()
+			link.RemoveChild(link, child)
+			parent.InsertBefore(parent, link, child)
+			child = next
+		}
+		parent.RemoveChild(parent, link)
+	}
 }

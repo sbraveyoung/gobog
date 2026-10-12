@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sbraveyoung/gobog/src/config"
@@ -211,9 +210,3 @@ func backupOnce(source, dir string, keep int) error {
 	return nil
 }
 
-// stopBackup gracefully stops the worker. Currently only used by tests.
-var (
-	backupOnceMu sync.Mutex // guards backupOnce caller order in tests
-)
-
-var _ = backupOnceMu // silence unused warning when tests aren't built

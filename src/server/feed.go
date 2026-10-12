@@ -65,6 +65,15 @@ func atomHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func articleUpdatedTime(a *articlepkg.Article) time.Time {
+	for _, value := range []string{a.UpdatedTime, a.CreateTime} {
+		if parsed, err := time.Parse(articlepkg.TIME_LAYOUT, value); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
 func buildAtomFeed() atomFeed {
 	domain := strings.TrimRight(config.C.Blog.Domain, "/")
 	posts := blog.Blog.AllPosts()
@@ -100,7 +109,7 @@ func buildAtomFeed() atomFeed {
 			Title:     a.Title,
 			Link:      atomLink{Rel: "alternate", Type: "text/html", Href: domain + a.URL},
 			ID:        domain + a.URL,
-			Updated:   t.UTC().Format(time.RFC3339),
+			Updated:   articleUpdatedTime(a).UTC().Format(time.RFC3339),
 			Published: t.UTC().Format(time.RFC3339),
 			Summary:   a.Summary,
 		}
@@ -139,14 +148,15 @@ func sitemapHandler(w http.ResponseWriter, r *http.Request) {
 
 func buildSitemap() sitemapSet {
 	domain := strings.TrimRight(config.C.Blog.Domain, "/")
-	urls := []sitemapURL{{Loc: domain + "/"}, {Loc: domain + "/about"}}
-	for _, a := range blog.Blog.AllPosts() {
+	urls := []sitemapURL{{Loc: domain + "/"}}
+	all := append(blog.Blog.AllPosts(), blog.Blog.Articles(blog.BlogTypes["page"])...)
+	for _, a := range all {
 		if a.IsPrivate() {
 			continue
 		}
-		var lastmod string
-		if t, err := time.Parse(articlepkg.TIME_LAYOUT, a.CreateTime); err == nil {
-			lastmod = t.UTC().Format("2006-01-02")
+		lastmod := ""
+		if updated := articleUpdatedTime(a); !updated.IsZero() {
+			lastmod = updated.UTC().Format("2006-01-02")
 		}
 		urls = append(urls, sitemapURL{Loc: domain + a.URL, LastMod: lastmod})
 	}

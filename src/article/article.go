@@ -14,7 +14,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/astaxie/beego/logs"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,6 +34,7 @@ type Meta struct {
 	Description string `meta:"description"`
 	Author      string `meta:"author"`
 	CreateTime  string `meta:"create_time"`
+	UpdatedTime string `meta:"updated_time"`
 	Category    string `meta:"category"`
 	TagsRaw     string `meta:"tags"`
 	Id          string `meta:"id"`
@@ -48,9 +48,8 @@ type Meta struct {
 	// by HTTP Basic auth (see config [auth]). Lists show title + URL,
 	// no Summary leak.
 	Private string `meta:"private"`
-	// Hidden articles are dropped from listings entirely (like Draft) but
-	// the URL keeps resolving — useful for "temporarily off" rather than
-	// "work in progress". Toggle via [blog].include_hidden.
+	// Hidden articles are excluded from public routes and indexes.
+	// Local preview can opt in through [blog].include_hidden.
 	Hidden string `meta:"hidden"`
 	// AI marks an AI-generated / -assisted post. Truthy values (true / 1 /
 	// yes / on) render a generic "AI" badge; any other non-empty string
@@ -105,7 +104,7 @@ func (a *Article) IsPinned() bool { return truthy(a.Pin) }
 // IsPrivate gates the article body behind HTTP Basic auth.
 func (a *Article) IsPrivate() bool { return truthy(a.Private) }
 
-// IsHidden drops the article from listings entirely (URL keeps resolving).
+// IsHidden excludes the article from public routes and indexes.
 func (a *Article) IsHidden() bool { return truthy(a.Hidden) }
 
 // IsAI reports whether the front-matter marks this article as AI-generated.
@@ -251,7 +250,7 @@ func (a Articles) Less(i, j int) bool {
 // missing meta — callers fill URL/Id/Title/CreateTime derivatively from the
 // path (and may persist the result back via RewriteFrontMatter).
 func ParseFile(path string) (*Article, error) {
-	logs.Debug("parse:", path)
+	// Do not log source filenames: static builds can run in public CI.
 	a := &Article{Source: path}
 
 	f, err := os.Open(path)

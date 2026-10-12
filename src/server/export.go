@@ -45,6 +45,11 @@ func Export(outDir string) error {
 	if outDir == "" {
 		return fmt.Errorf("export dir is empty")
 	}
+	if entries, err := os.ReadDir(outDir); err == nil && len(entries) != 0 {
+		return fmt.Errorf("export directory %s must be empty; use a fresh output directory to avoid retaining unpublished pages", outDir)
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", outDir, err)
 	}
@@ -580,7 +585,14 @@ func copyAssets(outDir string) error {
 				continue
 			}
 			fi, err := os.Stat(real)
-			if err != nil || !fi.Mode().IsRegular() {
+			if err != nil || !fi.Mode().IsRegular() || strings.EqualFold(filepath.Ext(real), ".md") {
+				continue
+			}
+			hidden, err := blog.FolderHidden(filepath.Dir(real))
+			if err != nil {
+				return err
+			}
+			if hidden && !config.C.Blog.IncludeHidden {
 				continue
 			}
 			if err := copyFile(real, filepath.Join(outDir, "image", filepath.FromSlash(rel))); err != nil {

@@ -51,12 +51,9 @@ type BlogConfig struct {
 	Theme       string
 	Source      string
 	CNAME       string
-	// Layout controls how Source is interpreted. "auto" (default) picks
-	// legacy when <source>/post/ exists, vault otherwise. "vault" forces
-	// recursive scan from <source> root. "legacy" forces the original
-	// gobog convention (<source>/post + <source>/about). Setting this
-	// avoids the failure mode where a user happens to have a folder
-	// named "post" in their vault and accidentally trips legacy.
+	// Layout selects URL generation for notes missing a permalink. Content is
+	// always read from post/ and pages/. "legacy" uses historical CRC32 URLs;
+	// other values use path slugs. Existing front-matter URLs always win.
 	Layout string `toml:"layout"`
 	// ExcludeDirs is a list of top-level directory names under <source>
 	// that the vault scanner should ignore (e.g. "templates", "drafts",
@@ -156,5 +153,5 @@ func init() {
 		fmt.Println("decode config file:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("config:%+v export=%q\n", C, ExportDir)
+	fmt.Printf("gobog: export=%q\n", ExportDir)
 }

@@ -45,7 +45,7 @@ Three themes ship in-tree:
 | `themes/sepia`      | Warm, paper-feel reading.     |
 | `themes/ocean`      | Cool blue, calm.              |
 
-All three share the same templates (`index.html` for the home, `group.html`
+All six share the same templates (`index.html` for the home, `group.html`
 for sub-listings, `post.html` for a single article) and JavaScript. Only
 the CSS color tokens differ. Pick one with `[blog].theme = "themes/<name>"`.
 
@@ -107,7 +107,7 @@ gobog product design, retained.
 
 ## Themes
 
-Three themes ship in-tree. Pick one with `[blog].theme = "themes/<name>"`.
+Six themes ship in-tree: minimal, sepia, ocean, letter, press and tufte. Pick one with `[blog].theme = "themes/<name>"`.
 
 | Theme              | Vibe                            |
 | ------------------ | ------------------------------- |
@@ -115,7 +115,7 @@ Three themes ship in-tree. Pick one with `[blog].theme = "themes/<name>"`.
 | `themes/sepia`     | Warm, paper-feel reading.       |
 | `themes/ocean`     | Cool blue, calm.                |
 
-All three share the same templates (`index.html`, `group.html`, `post.html`)
+All six share the same templates (`index.html`, `group.html`, `post.html`)
 and JavaScript — only the CSS color tokens differ. Each supports:
 
 - system dark/light auto-follow + manual toggle (persists in `localStorage`)
@@ -252,7 +252,7 @@ This layout is the same shape as `<user>.github.io` repositories. Push
 - **Markdown**: goldmark + GFM (tables, strikethrough, autolinks, task lists).
 - **Wikilinks + image embeds**: Obsidian-style `[[...]]` and `![[...]]`
   resolved against an in-memory index.
-- **Visibility**: `draft`, `hidden` (excluded from listings), `private`
+- **Visibility**: `draft`, `hidden` (excluded from public pages and indexes), `private`
   (listed but body gated by HTTP Basic auth), `pin` (sorted to the top).
 - **AI provenance badge**: `ai: true` or `ai: <model-name>`.
 - **Hero image**: `cover: foo.png`; doubles as `og:image`.
@@ -397,3 +397,9 @@ but contributions are welcome under MIT).
 Front matter is YAML: quoted values, block lists and multiline text are supported. An explicit `publish: false` suppresses publication, just like `draft: true`; missing `publish` preserves legacy behavior. Obsidian creates new posts as drafts. Duplicate, reserved and unsafe routes fail scanning instead of silently overwriting output. Static export includes only attachments referenced by public pages, with archive and tag indexes for every theme.
 
 The Obsidian plugin syncs Markdown; GitHub Actions renders and deploys HTML. Private source checkouts require a credential with Contents: Read on the source repository. An Actions-based Pages site requires `upload-pages-artifact` and `deploy-pages`; committing generated HTML alone does not publish it. Pin the renderer in the site configuration and select the Go toolchain from its `go.mod`.
+
+## Publishing, folder visibility and metadata normalization
+
+See the [publishing guide](docs/publishing-pipeline.zh-CN.md) for the verified Obsidian → private source → pinned renderer → GitHub Pages pipeline. Put `_folder.md` with `hidden: true` in any directory to withhold that entire subtree; parent hiding cannot be overridden by children. Control notes never become posts. Pages honor the same draft/publish/hidden/private rules as posts. Export into an empty directory to prevent stale pages remaining online.
+
+`go run ./cmd/frontmatter -source /path/to/blog -author NAME` previews metadata normalization; add `-apply -backup /path/to/new-backup` to apply with complete backups. Existing body bytes, URLs, IDs and nonempty dates survive.

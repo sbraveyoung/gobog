@@ -39,10 +39,11 @@ type BlogST struct {
 	Author      string
 	Theme       string
 
-	mu       sync.RWMutex
-	articles map[string]articlepkg.Articles
-	byTag    map[string]articlepkg.Articles
-	wiki     *WikiIndex
+	mu          sync.RWMutex
+	articles    map[string]articlepkg.Articles
+	byTag       map[string]articlepkg.Articles
+	wiki        *WikiIndex
+	unpublished map[string]bool
 }
 
 // WikiIndex powers Obsidian wikilink + image-embed resolution. Built once per
@@ -141,6 +142,7 @@ func (b *BlogST) SetForTesting(byType map[string]articlepkg.Articles) {
 	b.articles = byType
 	b.byTag = buildTagIndex(byType[BlogTypes["post"]])
 	b.wiki = newWikiIndex()
+	b.unpublished = make(map[string]bool)
 }
 
 // Wiki returns the current wiki index. Safe for read; treat as immutable.
@@ -152,10 +154,8 @@ func (b *BlogST) Wiki() *WikiIndex {
 
 // Reload re-scans <source> and atomically replaces the in-memory state.
 //
-// Layout: <source>/ contains arbitrarily nested .md files. Each subdirectory
-// becomes a group; arbitrary depth is supported. Any .md placed under
-// <source>/about/ is treated as the single about page (first by sort order).
-// Anywhere else under <source> is a post.
+// Layout: posts live recursively under <source>/post; independent pages live
+// directly under <source>/pages. Root documentation and _folder.md are not posts.
 //
 // Missing front-matter (id / url / title / create_time) is auto-filled and
 // persisted back to the source file the first time the scanner sees a note,
@@ -185,10 +185,14 @@ func (b *BlogST) Reload() error {
 		return err
 	}
 
+	unpublished, err := collectUnpublishedRoutes(source, articles)
+	if err != nil {
+		return err
+	}
 	indexNotes(wiki, articles[BlogTypes["post"]])
 	indexNotes(wiki, pages)
 	if err := indexImages(wiki, source); err != nil {
-		logs.Warn("image index:", err)
+		return err
 	}
 
 	tagIndex := buildTagIndex(append(append(articlepkg.Articles{}, articles[BlogTypes["post"]]...), pages...))
@@ -197,6 +201,7 @@ func (b *BlogST) Reload() error {
 	b.articles = articles
 	b.byTag = tagIndex
 	b.wiki = wiki
+	b.unpublished = unpublished
 	b.mu.Unlock()
 	return nil
 }
@@ -218,7 +223,7 @@ func validateRoutes(articles map[string]articlepkg.Articles) error {
 			}
 			first := strings.Split(strings.TrimPrefix(route, "/"), "/")[0]
 			switch first {
-			case "css", "js", "image", "tag", "search", "snippet", "healthz", "bing_img", "atom.xml", "sitemap.xml", "robots.txt", "404.html", "CNAME", "_pagefind":
+			case "css", "js", "image", "tag", "archive", "search", "snippet", "healthz", "bing_img", "atom.xml", "sitemap.xml", "robots.txt", "404.html", "CNAME", "_pagefind":
 				return fmt.Errorf("reserved article URL %q in %s", a.URL, a.Source)
 			}
 			if strings.HasPrefix(first, ".") || strings.HasPrefix(first, "_") {
@@ -232,6 +237,13 @@ func validateRoutes(articles map[string]articlepkg.Articles) error {
 				return fmt.Errorf("duplicate article URL %q: %s and %s", route, prev, source)
 			}
 			seen[route] = source
+			for _, tag := range a.Tags {
+				tagURL := "/tag/" + tag
+				u, err := url.Parse(tagURL)
+				if err != nil || u.RawQuery != "" || u.Fragment != "" || strings.Contains(tagURL, "\\") || !strings.HasPrefix(u.Path, "/tag/") || pathpkg.Clean(u.Path) != u.Path {
+					return fmt.Errorf("unsafe tag %q in %s", tag, source)
+				}
+			}
 			if err := walk(a.SubArticle); err != nil {
 				return err
 			}
@@ -285,6 +297,13 @@ func shouldExcludeTop(name string) bool {
 //	isRoot    — true only for the call on walkRoot itself; controls
 //	            top-level filters like [blog].exclude_dirs.
 func loadDir(dirPath, walkRoot, urlPrefix string, isRoot bool) (articlepkg.Articles, error) {
+	hidden, err := FolderHidden(dirPath)
+	if err != nil {
+		return nil, err
+	}
+	if hidden && !config.C.Blog.IncludeHidden {
+		return nil, nil
+	}
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
@@ -293,7 +312,7 @@ func loadDir(dirPath, walkRoot, urlPrefix string, isRoot bool) (articlepkg.Artic
 	var list articlepkg.Articles
 	for _, e := range entries {
 		name := e.Name()
-		if strings.HasPrefix(name, ".") {
+		if strings.HasPrefix(name, ".") || name == FolderPolicyFile || e.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 		full := filepath.Join(dirPath, name)
@@ -303,8 +322,7 @@ func loadDir(dirPath, walkRoot, urlPrefix string, isRoot bool) (articlepkg.Artic
 			}
 			child, err := loadGroupDir(full, walkRoot, urlPrefix)
 			if err != nil {
-				logs.Warn("loadGroupDir:", err)
-				continue
+				return nil, err
 			}
 			if child != nil {
 				list = append(list, child)
@@ -315,8 +333,7 @@ func loadDir(dirPath, walkRoot, urlPrefix string, isRoot bool) (articlepkg.Artic
 			}
 			art, err := buildArticle(full, walkRoot, urlPrefix, name)
 			if err != nil {
-				logs.Warn("buildArticle:", err)
-				continue
+				return nil, err
 			}
 			if art == nil {
 				continue
@@ -408,13 +425,7 @@ func buildArticle(path, walkRoot, urlPrefix, fileName string) (*articlepkg.Artic
 	if err != nil {
 		return nil, err
 	}
-	if a.IsDraft() && !config.C.Blog.IncludeDrafts {
-		return nil, nil
-	}
-	if a.IsHidden() && !config.C.Blog.IncludeHidden {
-		return nil, nil
-	}
-	if a.IsPrivate() && config.ExportDir != "" {
+	if !articleVisible(a) {
 		return nil, nil
 	}
 
@@ -500,6 +511,13 @@ func slugifyPath(rel string) string {
 // Sub-directories under pages/ are ignored (kept for the user to stash
 // drafts or attachments without exposing them).
 func loadPages(dir string) (articlepkg.Articles, error) {
+	hidden, err := FolderHidden(dir)
+	if err != nil {
+		return nil, err
+	}
+	if hidden && !config.C.Blog.IncludeHidden {
+		return nil, nil
+	}
 	if !dirExists(dir) {
 		return nil, nil
 	}
@@ -509,7 +527,7 @@ func loadPages(dir string) (articlepkg.Articles, error) {
 	}
 	var list articlepkg.Articles
 	for _, e := range entries {
-		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") || e.Name() == FolderPolicyFile || e.Type()&os.ModeSymlink != 0 {
 			continue
 		}
 		if !strings.HasSuffix(e.Name(), ".md") {
@@ -518,7 +536,9 @@ func loadPages(dir string) (articlepkg.Articles, error) {
 		full := filepath.Join(dir, e.Name())
 		a, err := articlepkg.ParseFile(full)
 		if err != nil {
-			logs.Warn("page parse:", err)
+			return nil, err
+		}
+		if !articleVisible(a) {
 			continue
 		}
 		basename := strings.TrimSuffix(e.Name(), ".md")
@@ -587,6 +607,13 @@ func indexImages(w *WikiIndex, source string) error {
 			return nil
 		}
 		if info.IsDir() {
+			hidden, policyErr := FolderHidden(path)
+			if policyErr != nil {
+				return policyErr
+			}
+			if hidden && !config.C.Blog.IncludeHidden {
+				return filepath.SkipDir
+			}
 			if strings.HasPrefix(info.Name(), ".") && path != source {
 				return filepath.SkipDir
 			}
@@ -705,7 +732,11 @@ func (b *BlogST) PostsByTag(tag string) articlepkg.Articles {
 func (b *BlogST) LatestUpdate() time.Time {
 	var latest time.Time
 	for _, a := range b.AllPosts() {
-		t, err := time.Parse(articlepkg.TIME_LAYOUT, a.CreateTime)
+		value := a.UpdatedTime
+		if value == "" {
+			value = a.CreateTime
+		}
+		t, err := time.Parse(articlepkg.TIME_LAYOUT, value)
 		if err != nil {
 			continue
 		}

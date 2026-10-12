@@ -72,7 +72,7 @@ CRC32 hex，保证 URL 始终可寻址）。
 
 ## 主题
 
-仓库自带三套主题，通过 `[blog].theme = "themes/<name>"` 选择：
+仓库自带六套主题：minimal、sepia、ocean、letter、press、tufte，，通过 `[blog].theme = "themes/<name>"` 选择：
 
 | 主题               | 风格                                |
 | ------------------ | ----------------------------------- |
@@ -80,7 +80,7 @@ CRC32 hex，保证 URL 始终可寻址）。
 | `themes/sepia`     | 暖色调，类似纸质阅读体验            |
 | `themes/ocean`     | 冷蓝调，安静耐看                    |
 
-三套主题共享 HTML 模板（`index.html`、`group.html`、`post.html`）和
+六套主题共享 HTML 模板（`index.html`、`group.html`、`post.html`）和
 JavaScript，只是 CSS 颜色 token 不同。每个主题都支持：
 
 - 自动跟随系统深色 / 浅色，也支持手动切换（`localStorage` 持久化）
@@ -345,3 +345,9 @@ Obsidian 插件同步 Markdown 到源仓库；源仓库通过 `repository_dispat
 新文章默认 `draft: true`；写完改为 `draft: false` 再推送。已有文章不改状态。`publish: false`、`draft: true`、`hidden: true` 任意一个都会阻止正常发布；静态导出始终不提供 `private: true` 的正文。取消发表后应重新导出到新的目录并部署。
 
 静态导出只复制公开页面引用的附件，跳过点文件和未引用资源；切换主题时 RSS 保持使用根目录订阅地址。`/archive`、`/tag/` 和每个标签页都会导出。
+
+## 写作、目录隐藏与 front matter 整理
+
+完整操作见 [发布管线手册](docs/publishing-pipeline.zh-CN.md)。在目录中放置 `_folder.md` 并设置 `hidden: true`，即可隐藏目录及子目录；子目录不能覆盖父目录隐藏。控制笔记不会成为文章，独立页面也遵守 draft/publish/hidden/private 开关。导出目录必须为空，避免旧页面残留。
+
+执行 `go run ./cmd/frontmatter -source /path/to/blog -author NAME` 预览整理结果，加入 `-apply -backup /path/to/new-backup` 完整备份后应用。已有正文、URL、ID 和非空日期保留。

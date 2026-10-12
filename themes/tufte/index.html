@@ -22,7 +22,7 @@
     <a href="/" class="{{if not .Tag}}active{{end}}"><em>essays</em></a>
     <a href="/tag/" class="{{if .Tag}}active{{end}}">tags</a>
     <a href="/archive">archive</a>
-    <a href="/about">about</a>
+    {{range .Site.Pages}}<a href="{{.URL}}">{{if eq .URL "/about"}}about{{else}}{{.Title}}{{end}}</a>{{end}}
     <a href="/atom.xml">atom</a>
   </nav>
 </header>
