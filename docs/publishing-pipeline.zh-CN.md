@@ -15,6 +15,8 @@ flowchart LR
 
 Markdown 是内容源。插件负责同步、补全新文章属性、目录开关和本地预览；实际线上渲染在 GitHub Actions 中由 gobog 完成。站点仓库保存配置、工作流和检查脚本；生成结果通过 Pages artifact 部署，不再提交回公开 Git 仓库。每次构建在 Actions Summary 中记录源码 SHA、渲染器 SHA 与主题。修改展示逻辑应该改渲染器、主题或 `_gobog.json`，不要直接修改生成的 HTML。
 
+每次导出都会生成 Atom、sitemap、robots.txt 和当前主题的 404 页面。sitemap 收录公开文章、独立页面、标签和系列目录页（含嵌套系列），隐藏、草稿、私有内容及没有公开文章的系列不会进入公开构建。文章和独立页面的 `lastmod` 优先使用 `updated_time`；自动生成的系列目录页没有独立维护的更新时间，因此省略 `lastmod`。Pages 直接发布构建产物，不经过 Jekyll，也不需要把 `.nojekyll` 或上述静态文件提交回站点仓库。
+
 ```text
 blog/
 ├── _folder.md             整个博客的目录开关

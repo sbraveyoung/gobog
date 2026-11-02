@@ -160,6 +160,20 @@ func buildSitemap() sitemapSet {
 		}
 		urls = append(urls, sitemapURL{Loc: domain + a.URL, LastMod: lastmod})
 	}
+	// AllPosts contains only leaves. Include the same public group landing
+	// pages as the static export, excluding groups emptied by private filtering.
+	// Synthetic groups have no authored updated_time, so omit their lastmod.
+	var addGroups func(articlepkg.Articles)
+	addGroups = func(list articlepkg.Articles) {
+		for _, a := range list {
+			if len(a.SubArticle) == 0 {
+				continue
+			}
+			urls = append(urls, sitemapURL{Loc: domain + a.URL})
+			addGroups(a.SubArticle)
+		}
+	}
+	addGroups(withoutPrivate(blog.Blog.Groups()))
 	for _, t := range blog.Blog.Tags() {
 		urls = append(urls, sitemapURL{Loc: domain + "/tag/" + t})
 	}
